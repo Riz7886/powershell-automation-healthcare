@@ -1,0 +1,1 @@
+Add-Type -AssemblyName System.Windows.Forms;while($true){[System.Windows.Forms.Cursor]::Position=New-Object System.Drawing.Point((Get-Random -Min 0 -Max 1920),(Get-Random -Min 0 -Max 1080));Start-Sleep -Seconds 30}
