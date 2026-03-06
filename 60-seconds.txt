@@ -1,0 +1,4 @@
+while ($true) { 
+    (New-Object -ComObject WScript.Shell).SendKeys(' ')
+    Start-Sleep -Seconds 60 
+}
