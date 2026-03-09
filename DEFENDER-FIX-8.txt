@@ -1,0 +1,41 @@
+$subscriptions = Get-AzSubscription
+
+foreach ($sub in $subscriptions) {
+    Set-AzContext -SubscriptionId $sub.Id | Out-Null
+
+    foreach ($kv in $kvNames) {
+        try {
+            $vault = Get-AzKeyVault -VaultName $kv -ErrorAction SilentlyContinue
+            if (-not $vault) { continue }
+
+            Write-Host "FOUND: $kv" -ForegroundColor Cyan
+
+            $token = (Get-AzAccessToken).Token
+            $subId = $sub.Id
+            $rg = $vault.ResourceGroup
+
+            $uri = "https://management.azure.com/subscriptions/$subId/resourceGroups/$rg/providers/Microsoft.KeyVault/vaults/$($kv)?api-version=2022-07-01"
+
+            $current = Invoke-RestMethod -Uri $uri -Headers @{
+                Authorization="Bearer $token"
+            } -Method GET
+
+            Write-Host "  Current PurgeProtection: $($current.properties.enablePurgeProtection)" -ForegroundColor Yellow
+
+            $current.properties.enablePurgeProtection = $true
+            $body = $current | ConvertTo-Json -Depth 10
+
+            $response = Invoke-RestMethod -Uri $uri -Headers @{
+                Authorization="Bearer $token"
+                "Content-Type"="application/json"
+            } -Method PUT -Body $body
+
+            Write-Host "  After PurgeProtection: $($response.properties.enablePurgeProtection)" -ForegroundColor Green
+            Write-Host "[FIXED] $kv ✅" -ForegroundColor Green
+
+        } catch {
+            # NOW we see ALL errors
+            Write-Host "[ERROR] $kv - $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+}
