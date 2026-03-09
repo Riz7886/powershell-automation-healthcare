@@ -1,6 +1,4 @@
-param(
-    [string]$TenantId = "4S04822a-07ef-4037-94c0-e632d4ad1a72"
-)
+param()
 
 $ErrorActionPreference = "Continue"
 $ts           = Get-Date -Format "yyyy-MM-dd_HHmmss"
@@ -22,12 +20,46 @@ Write-Host "================================================================" -F
 Write-Host ""
 
 # ---------------------------------------------------------------
-# STEP 1: LOGIN
+# STEP 1: AUTO LOGIN - USES SAVED TOKEN, NEVER ASKS AGAIN
 # ---------------------------------------------------------------
-Write-Host "[1/4] Connecting to Azure (MFA)..." -ForegroundColor Yellow
-Connect-AzAccount -TenantId $TenantId -WarningAction SilentlyContinue | Out-Null
-$ctx = Get-AzContext
-Write-Host "  Logged in as: $($ctx.Account.Id)" -ForegroundColor Green
+Write-Host "[1/4] Connecting to Azure..." -ForegroundColor Yellow
+
+$SavedContextFile = "$env:USERPROFILE\.azure\PyxContext.json"
+
+# Try existing in-memory session first
+$ctx = Get-AzContext -ErrorAction SilentlyContinue
+
+if ($ctx -and $ctx.Account) {
+    Write-Host "  Using active session: $($ctx.Account.Id)" -ForegroundColor Green
+
+} elseif (Test-Path $SavedContextFile) {
+    # Restore from saved token file - no popup
+    Write-Host "  Restoring saved session..." -ForegroundColor Yellow
+    Import-AzContext -Path $SavedContextFile -WarningAction SilentlyContinue | Out-Null
+    $ctx = Get-AzContext
+    if ($ctx -and $ctx.Account) {
+        Write-Host "  Restored session: $($ctx.Account.Id)" -ForegroundColor Green
+    } else {
+        # Token expired - need fresh login once
+        Write-Host "  Saved token expired - logging in once..." -ForegroundColor Yellow
+        Connect-AzAccount -WarningAction SilentlyContinue | Out-Null
+        $ctx = Get-AzContext
+        Save-AzContext -Path $SavedContextFile -Force | Out-Null
+        Write-Host "  Logged in and saved: $($ctx.Account.Id)" -ForegroundColor Green
+    }
+
+} else {
+    # First ever run - login once and save token for all future runs
+    Write-Host "  First run - logging in once and saving token..." -ForegroundColor Yellow
+    Connect-AzAccount -WarningAction SilentlyContinue | Out-Null
+    $ctx = Get-AzContext
+    if (!(Test-Path "$env:USERPROFILE\.azure")) {
+        New-Item -Path "$env:USERPROFILE\.azure" -ItemType Directory -Force | Out-Null
+    }
+    Save-AzContext -Path $SavedContextFile -Force | Out-Null
+    Write-Host "  Logged in and saved for future runs: $($ctx.Account.Id)" -ForegroundColor Green
+}
+
 Write-Host ""
 
 # ---------------------------------------------------------------
@@ -95,7 +127,7 @@ foreach ($sub in $subs) {
 
     # KEY FIX: Get a context object per subscription and use -DefaultProfile
     # This guarantees every query runs in the right subscription
-    $subCtx = Set-AzContext -SubscriptionId $sub.Id -Force -WarningAction SilentlyContinue
+    $subCtx = Set-AzContext -SubscriptionId $sub.Id -WarningAction SilentlyContinue
 
     $servers = Get-AzSqlServer -DefaultProfile $subCtx -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
 
