@@ -1,0 +1,2 @@
+Connect-AzAccount
+Get-AzSqlServer | Select-Object ServerName, ResourceGroupName | Format-Table
