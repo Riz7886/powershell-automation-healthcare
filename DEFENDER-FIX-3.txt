@@ -1,0 +1,74 @@
+$kvNames = @("kv-pyx-prod","kv-pyx-test","kv-pyx-qa","kv-extracts-prod",
+             "kv-pyx-stage","kv-extracts-preprod","kv-target-pop-prod",
+             "kv-target-pop-preprod","kv-datasystem-prod","kv-datasystem-antprod",
+             "kv-datasystem-test","kv-datasystem-qa","kv-backend-automation")
+
+foreach ($kv in $kvNames) {
+    try {
+        $vault = Get-AzKeyVault -VaultName $kv -ErrorAction Stop
+        
+        # FIX: use $vault.ResourceGroup NOT $vault.ResourceGroupName
+        $rg = $vault.ResourceGroup
+        
+        if ([string]::IsNullOrEmpty($rg)) {
+            Write-Host "[SKIP] $kv - Could not resolve RG" -ForegroundColor Yellow
+            continue
+        }
+
+        Update-AzKeyVault -VaultName $kv `
+            -ResourceGroupName $rg `
+            -EnableSoftDelete `
+            -EnablePurgeProtection
+        
+        Write-Host "[FIXED] $kv" -ForegroundColor Green
+    } catch {
+        Write-Host "[FAILED] $kv - $_" -ForegroundColor Red
+    }
+}
+
+
+
+------------------------------
+
+
+$vault = Get-AzKeyVault -VaultName "kv-pyx-prod"
+$vault | Select-Object VaultName, ResourceGroup, ResourceGroupName
+
+--------------------------------------------------------
+
+
+$kvNames = @("kv-pyx-prod","kv-pyx-test","kv-pyx-qa","kv-extracts-prod",
+             "kv-pyx-stage","kv-extracts-preprod","kv-target-pop-prod",
+             "kv-target-pop-preprod","kv-datasystem-prod","kv-datasystem-antprod",
+             "kv-datasystem-test","kv-datasystem-qa","kv-backend-automation")
+
+# Get ALL subscriptions you have access to
+$subscriptions = Get-AzSubscription
+
+foreach ($sub in $subscriptions) {
+    Set-AzContext -SubscriptionId $sub.Id | Out-Null
+    Write-Host "`n[SUB] $($sub.Name)" -ForegroundColor Cyan
+
+    foreach ($kv in $kvNames) {
+        try {
+            $vault = Get-AzKeyVault -VaultName $kv -ErrorAction Stop
+            
+            if (-not $vault) { continue }
+
+            $rg = $vault.ResourceGroup
+            Write-Host "  [FOUND] $kv in RG: $rg (Sub: $($sub.Name))" -ForegroundColor Green
+
+            Update-AzKeyVault -VaultName $kv `
+                -ResourceGroupName $rg `
+                -EnableSoftDelete `
+                -EnablePurgeProtection -ErrorAction Stop
+
+            Write-Host "  [FIXED] $kv ✅" -ForegroundColor Green
+
+        } catch {
+            # Vault not in this sub, silently skip
+        }
+    }
+}
+
+Write-Host "`nDONE!" -ForegroundColor Green
