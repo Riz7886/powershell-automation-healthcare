@@ -1,0 +1,25 @@
+# Switch to Az CLI - bypasses the PowerShell module version issue entirely
+$kvNames = @("kv-pyx-prod","kv-pyx-test","kv-pyx-qa","kv-extracts-prod",
+             "kv-pyx-stage","kv-extracts-preprod","kv-target-pop-prod",
+             "kv-target-pop-preprod","kv-datasystem-prod","kv-datasystem-antprod",
+             "kv-datasystem-test","kv-datasystem-qa","kv-backend-automation",
+             "kv-pyx-hygiene-prod","kv-pyx-hygiene-preprod","kv-fileingestion-prod",
+             "kv-fileingestion-preprod","kv-testmi","kv-analytics-preprod",
+             "kv-analyticsdb-prod","kv-coneng-test","kv-pyx-data-hub-preprod",
+             "kv-pyx-data-hub-test","kv-peer-platform-prod","kv-pyx-data-hub-prod",
+             "kv-pyx-coneng-sandbox","kv-aics-sandbox","DiskEncryptPyx")
+
+foreach ($kv in $kvNames) {
+    Write-Host "Fixing $kv..." -ForegroundColor Cyan
+    
+    # Enable soft-delete and purge protection via Az CLI
+    $result = az keyvault update --name $kv --enable-soft-delete true --enable-purge-protection true 2>&1
+    
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[FIXED] $kv" -ForegroundColor Green
+    } else {
+        Write-Host "[FAILED] $kv - $result" -ForegroundColor Red
+    }
+}
+
+Write-Host "`nALL DONE!" -ForegroundColor Green
