@@ -1,6 +1,5 @@
 # Serverless Pilot - Full Evaluation Report
 # Author: Syed Rizvi, Cloud Infrastructure Engineer
-# Uses Azure CLI (az) - same method that originally found all 18 databases
 
 $ErrorActionPreference = "Continue"
 $ts           = Get-Date -Format "yyyy-MM-dd_HHmmss"
@@ -9,9 +8,7 @@ $HtmlFile     = "$ReportFolder\Serverless-Tony-$ts.html"
 $CsvFile      = "$ReportFolder\Serverless-Tony-$ts.csv"
 $PilotConfig  = "C:\Temp\Serverless_Pilot\Pilot_Configuration.json"
 
-if (!(Test-Path $ReportFolder)) {
-    New-Item -Path $ReportFolder -ItemType Directory -Force | Out-Null
-}
+if (!(Test-Path $ReportFolder)) { New-Item -Path $ReportFolder -ItemType Directory -Force | Out-Null }
 
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
@@ -22,26 +19,19 @@ Write-Host "================================================================" -F
 Write-Host ""
 
 # ---------------------------------------------------------------
-# STEP 1: CONNECT USING AZ CLI - AUTO, NO POPUP IF ALREADY LOGGED IN
+# STEP 1: AZ CLI SESSION CHECK
 # ---------------------------------------------------------------
-Write-Host "[1/4] Checking Azure CLI session..." -ForegroundColor Yellow
-
+Write-Host "[1/4] Checking Azure session..." -ForegroundColor Yellow
 $whoami = az account show -o json 2>$null
-if (-not $whoami -or $whoami -notlike "*@*") {
-    Write-Host "  Logging in..." -ForegroundColor Yellow
-    az login --only-show-errors | Out-Null
-} else {
-    $acct = $whoami | ConvertFrom-Json
-    Write-Host "  Already logged in as: $($acct.user.name)" -ForegroundColor Green
-}
-
+if (-not $whoami) { Write-Host "  ERROR: Not logged in. Run: az login" -ForegroundColor Red; exit 1 }
+$acct = $whoami | ConvertFrom-Json
+Write-Host "  Connected as: $($acct.user.name)" -ForegroundColor Green
 Write-Host ""
 
 # ---------------------------------------------------------------
-# STEP 2: LOAD PILOT DATA
+# STEP 2: PILOT DATA
 # ---------------------------------------------------------------
-Write-Host "[2/4] Loading 7-day pilot results..." -ForegroundColor Yellow
-
+Write-Host "[2/4] Loading pilot data..." -ForegroundColor Yellow
 $pilotDbName   = "sqldb-healthchoice-stage"
 $pilotOrigCost = 15.00
 $pilotStart    = (Get-Date).AddDays(-10)
@@ -57,14 +47,7 @@ if (Test-Path $PilotConfig) {
             $daysRunning = ([datetime]::Now - $pilotStart).Days
             if ($daysRunning -lt 1) { $daysRunning = 1 }
         }
-        Write-Host "  Pilot DB  : $pilotDbName" -ForegroundColor Green
-        Write-Host "  Started   : $($pilotStart.ToString('yyyy-MM-dd'))" -ForegroundColor Green
-        Write-Host "  Days Live : $daysRunning days" -ForegroundColor Green
-    } catch {
-        Write-Host "  Using defaults (no config file)" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "  No config file - using defaults" -ForegroundColor Yellow
+    } catch {}
 }
 
 $dailyStd    = [math]::Round($pilotOrigCost / 30, 4)
@@ -75,143 +58,177 @@ $svlMoCost   = [math]::Round($pilotOrigCost * 0.30, 2)
 $saveMoPilot = [math]::Round($pilotOrigCost * 0.70, 2)
 $saveYrPilot = [math]::Round($saveMoPilot * 12, 2)
 
-Write-Host "  7-Day Actual Saved : `$$saved7Day" -ForegroundColor Green
-Write-Host "  Total Saved To Date: `$$savedToDate ($daysRunning days)" -ForegroundColor Green
+Write-Host "  Pilot DB      : $pilotDbName" -ForegroundColor Green
+Write-Host "  Days Running  : $daysRunning" -ForegroundColor Green
+Write-Host "  7-Day Saved   : `$$saved7Day" -ForegroundColor Green
+Write-Host "  Total To Date : `$$savedToDate" -ForegroundColor Green
 Write-Host ""
 
 # ---------------------------------------------------------------
-# STEP 3: SCAN ALL SUBSCRIPTIONS USING AZ CLI
+# STEP 3: FIND ALL SQL SERVERS - 3 METHODS LIKE ORIGINAL
 # ---------------------------------------------------------------
-Write-Host "[3/4] Scanning all subscriptions for SQL databases..." -ForegroundColor Yellow
+Write-Host "[3/4] Finding all SQL servers across all subscriptions..." -ForegroundColor Yellow
 Write-Host ""
 
-# Get ALL subscriptions
-$rawSubs = az account list --all -o json 2>$null | ConvertFrom-Json
-$subs    = $rawSubs | Where-Object { $_.state -eq "Enabled" }
-Write-Host "  Subscriptions found: $($subs.Count)" -ForegroundColor Cyan
+$allSubs   = az account list --all -o json 2>$null | ConvertFrom-Json
+$subs      = $allSubs | Where-Object { $_.state -eq "Enabled" }
+$subsSQL   = @()
+$sysDbs    = @("master","model","msdb","tempdb")
+
+Write-Host "  Subscriptions: $($subs.Count)" -ForegroundColor Cyan
 Write-Host ""
 
+foreach ($sub in $subs) {
+    Write-Host "  $($sub.name)..." -ForegroundColor Gray -NoNewline
+    az account set --subscription $sub.id 2>$null
+
+    # METHOD 1: az sql server list
+    $rawS = az sql server list --subscription $sub.id -o json 2>$null
+    if ($rawS -and $rawS.Trim().Length -gt 2) {
+        try {
+            $srvs = $rawS | ConvertFrom-Json
+            if ($srvs.Count -gt 0) {
+                Write-Host " $($srvs.Count) server(s) [method 1]" -ForegroundColor Green
+                $subsSQL += @{Sub=$sub; Servers=$srvs}
+                continue
+            }
+        } catch {}
+    }
+
+    # METHOD 2: az resource list
+    $rawR = az resource list --subscription $sub.id --resource-type "Microsoft.Sql/servers" -o json 2>$null
+    if ($rawR -and $rawR.Trim().Length -gt 2) {
+        try {
+            $rl = $rawR | ConvertFrom-Json
+            if ($rl.Count -gt 0) {
+                Write-Host " $($rl.Count) server(s) [method 2]" -ForegroundColor Green
+                $subsSQL += @{Sub=$sub; Servers=$rl}
+                continue
+            }
+        } catch {}
+    }
+
+    Write-Host " 0" -ForegroundColor Gray
+}
+
+# METHOD 3: Resource Graph - finds everything the other two missed
+if ($subsSQL.Count -eq 0) {
+    Write-Host ""
+    Write-Host "  Methods 1+2 found nothing - trying Resource Graph..." -ForegroundColor Yellow
+    try {
+        az extension add --name resource-graph 2>$null
+        $gr = az graph query -q "Resources | where type =~ 'Microsoft.Sql/servers' | project name, resourceGroup, subscriptionId" -o json 2>$null
+        if ($gr) {
+            $gd = ($gr | ConvertFrom-Json).data
+            if ($gd -and $gd.Count -gt 0) {
+                Write-Host "  Resource Graph found $($gd.Count) server(s)" -ForegroundColor Green
+                $gd | ForEach-Object { Write-Host "    $($_.name) | $($_.resourceGroup)" -ForegroundColor Cyan }
+                $gSubIds = $gd | Select-Object -ExpandProperty subscriptionId -Unique
+                foreach ($gsid in $gSubIds) {
+                    $gs = $allSubs | Where-Object { $_.id -eq $gsid }
+                    if (-not $gs) { continue }
+                    az account set --subscription $gsid 2>$null
+                    $rawSrv = az sql server list --subscription $gsid -o json 2>$null
+                    if ($rawSrv) {
+                        try {
+                            $ps = $rawSrv | ConvertFrom-Json
+                            if ($ps.Count -gt 0) { $subsSQL += @{Sub=$gs; Servers=$ps} }
+                        } catch {}
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Host "  Resource Graph error: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+Write-Host ""
+Write-Host "  Subscriptions with SQL servers: $($subsSQL.Count)" -ForegroundColor Cyan
+Write-Host ""
+
+# ---------------------------------------------------------------
+# NOW SCAN ALL DATABASES
+# ---------------------------------------------------------------
 $allDbs = @()
-$sysDbs = @("master","model","msdb","tempdb")
-
 $tierCostMap = @{
     "Basic"=5; "S0"=15; "S1"=30; "S2"=75; "S3"=150; "S4"=300
     "S6"=600; "S7"=1200; "S9"=2400; "S12"=4507
     "P1"=465; "P2"=930; "P4"=1860; "P6"=3720
 }
 
-foreach ($sub in $subs) {
-    Write-Host "  [$($sub.name)]" -ForegroundColor White
+Write-Host "  Scanning databases..." -ForegroundColor Yellow
+Write-Host ""
 
-    # Set active subscription
+foreach ($entry in $subsSQL) {
+    $sub     = $entry.Sub
+    $servers = $entry.Servers
+    Write-Host "  $($sub.name)" -ForegroundColor White
     az account set --subscription $sub.id 2>$null
 
-    # Get all SQL servers in this subscription using az CLI
-    $rawServers = az sql server list --subscription $sub.id -o json 2>$null
-    if (-not $rawServers -or $rawServers.Trim().Length -le 2) {
-        Write-Host "    No SQL servers" -ForegroundColor DarkGray
-        continue
-    }
-
-    $servers = $rawServers | ConvertFrom-Json
-    Write-Host "    Servers: $($servers.Count)" -ForegroundColor Green
-
     foreach ($srv in $servers) {
-        $srvName = $srv.name
-        $rgName  = $srv.resourceGroup
-        Write-Host "    Server: $srvName" -ForegroundColor White
+        $sn = if ($srv.name) { $srv.name } else { $srv }
+        $rg = if ($srv.resourceGroup) { $srv.resourceGroup } else { "" }
+        if (-not $sn -or -not $rg) { continue }
+        Write-Host "    Server: $sn" -ForegroundColor Cyan
 
-        # Get all databases using az CLI
-        $rawDbs = az sql db list --server $srvName --resource-group $rgName --subscription $sub.id -o json 2>$null
-        if (-not $rawDbs -or $rawDbs.Trim().Length -le 2) {
-            Write-Host "      No databases or access denied" -ForegroundColor DarkGray
-            continue
-        }
+        $rawDbs = az sql db list --server $sn --resource-group $rg --subscription $sub.id -o json 2>$null
+        if (-not $rawDbs -or $rawDbs.Trim().Length -le 2) { Write-Host "      No databases" -ForegroundColor DarkGray; continue }
 
-        $databases = $rawDbs | ConvertFrom-Json
+        try { $databases = $rawDbs | ConvertFrom-Json } catch { continue }
 
         foreach ($db in $databases) {
             $dbName = $db.name
             if ($sysDbs -contains $dbName) { continue }
 
             $tier         = $db.currentServiceObjectiveName
-            $edition      = $db.edition
-            $status       = $db.status
-            $isServerless = ($db.sku.tier -eq "GeneralPurpose" -and $db.kind -like "*serverless*") -or
-                            ($tier -like "GP_S_*") -or
-                            ($db.autoPauseDelay -gt 0)
+            $isServerless = ($db.kind -like "*serverless*") -or ($db.autoPauseDelay -gt 0)
             $isPilot      = ($dbName -eq $pilotDbName)
             $isProd       = ($dbName -like "*-prod*" -or $dbName -like "*prod-*" -or
-                             $srvName -like "*-prod*" -or $srvName -like "*prod-*")
+                             $sn -like "*-prod*" -or $sn -like "*prod-*")
 
-            # Cost lookup
             $stdCost = 30
-            foreach ($k in $tierCostMap.Keys) {
-                if ($tier -eq $k -or $tier -like "*$k") { $stdCost = $tierCostMap[$k]; break }
-            }
+            foreach ($k in $tierCostMap.Keys) { if ($tier -eq $k) { $stdCost = $tierCostMap[$k]; break } }
             if ($isPilot) { $stdCost = $pilotOrigCost }
 
-            # Projections
             $svlCost = [math]::Round($stdCost * 0.30, 2)
             $saveMo  = [math]::Round($stdCost * 0.70, 2)
             $saveYr  = [math]::Round($saveMo * 12, 2)
 
-            # Get 7-day DTU using az monitor
+            # DTU metric
             $avgDtu = "N/A"
             try {
-                $startTime = (Get-Date).AddDays(-7).ToString("yyyy-MM-ddTHH:mm:ssZ")
-                $endTime   = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
-                $rawMetric = az monitor metrics list `
-                    --resource $db.id `
-                    --metric "dtu_consumption_percent" `
-                    --start-time $startTime `
-                    --end-time   $endTime `
-                    --interval   "PT1H" `
-                    --aggregation Average `
-                    -o json 2>$null
-
-                if ($rawMetric -and $rawMetric.Length -gt 5) {
-                    $metricData = $rawMetric | ConvertFrom-Json
-                    $points = $metricData.value[0].timeseries[0].data |
-                              Where-Object { $null -ne $_.average }
+                $metRaw = az monitor metrics list --resource $db.id --metric "dtu_consumption_percent" --start-time (Get-Date).AddDays(-7).ToString("yyyy-MM-ddTHH:mm:ssZ") --end-time (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ") --interval "PT1H" --aggregation Average -o json 2>$null
+                if ($metRaw) {
+                    $met    = $metRaw | ConvertFrom-Json
+                    $points = $met.value[0].timeseries[0].data | Where-Object { $null -ne $_.average }
                     if ($points -and $points.Count -gt 0) {
-                        $avg    = ($points | Measure-Object -Property average -Average).Average
-                        $avgDtu = "$([math]::Round($avg, 1))%"
-                    } else {
-                        $avgDtu = "0% (idle)"
-                    }
+                        $avgDtu = "$([math]::Round(($points | Measure-Object -Property average -Average).Average,1))%"
+                    } else { $avgDtu = "0% (idle)" }
                 }
-            } catch {
-                $avgDtu = "N/A"
-            }
+            } catch { $avgDtu = "N/A" }
 
-            # Recommendation
             $rec = "Review"
             if ($isServerless)                        { $rec = "Live - Serverless" }
             elseif ($isProd)                          { $rec = "PROD - Skip" }
             elseif ($avgDtu -in @("0% (idle)","N/A")) { $rec = "Strong Candidate" }
             else {
                 $n = [double]($avgDtu -replace "[^0-9.]","")
-                if    ($n -lt 20) { $rec = "Strong Candidate" }
-                elseif($n -lt 40) { $rec = "Good Candidate" }
-                else              { $rec = "Review" }
+                if ($n -lt 20) { $rec = "Strong Candidate" } elseif ($n -lt 40) { $rec = "Good Candidate" }
             }
 
-            $mode  = if ($isServerless) { "SERVERLESS" } else { "Standard" }
-            $pause = if ($isServerless -and $db.autoPauseDelay -gt 0) { "$($db.autoPauseDelay) min" } else { "N/A" }
+            $mode = if ($isServerless) { "SERVERLESS" } else { "Standard" }
 
             $allDbs += [PSCustomObject]@{
                 DatabaseName       = $dbName
-                ServerName         = $srvName
-                ResourceGroup      = $rgName
+                ServerName         = $sn
+                ResourceGroup      = $rg
                 Subscription       = $sub.name
                 Tier               = $tier
-                Edition            = $edition
                 Mode               = $mode
-                Status             = $status
+                Status             = $db.status
                 IsProd             = if ($isProd)  { "PROD" }      else { "" }
                 PilotDB            = if ($isPilot) { "YES-PILOT" } else { "" }
-                AutoPause          = $pause
                 AvgDTU_7Day        = $avgDtu
                 CurrentCost_Mo     = "`$$stdCost"
                 Serverless_Cost_Mo = "`$$svlCost"
@@ -224,108 +241,62 @@ foreach ($sub in $subs) {
 
             $icon  = if ($isServerless) { "[SERVERLESS]" } else { "[Standard  ]" }
             $ptag  = if ($isPilot)      { " <<< PILOT"  } else { "" }
-            $prodT = if ($isProd)       { " [PROD]"     } else { "" }
-            Write-Host "      $icon  $dbName  DTU:$avgDtu  `$$stdCost/mo$ptag$prodT" -ForegroundColor White
+            Write-Host "      $icon $dbName | DTU:$avgDtu | `$$stdCost/mo$ptag" -ForegroundColor White
         }
     }
 }
 
 Write-Host ""
-Write-Host "  TOTAL DATABASES FOUND: $($allDbs.Count)" -ForegroundColor Cyan
+Write-Host "  TOTAL DATABASES: $($allDbs.Count)" -ForegroundColor Cyan
 Write-Host ""
 
 # ---------------------------------------------------------------
-# STEP 4: BUILD HTML + CSV
+# STEP 4: HTML + CSV
 # ---------------------------------------------------------------
-Write-Host "[4/4] Building report files..." -ForegroundColor Yellow
+Write-Host "[4/4] Building report..." -ForegroundColor Yellow
 
 $allDbs | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
 
 $devDbs     = $allDbs | Where-Object { $_.IsProd -ne "PROD" }
 $svlCount   = ($devDbs | Where-Object { $_.Mode -eq "SERVERLESS" }).Count
 $stdCount   = ($devDbs | Where-Object { $_.Mode -ne "SERVERLESS" }).Count
-$totalCurr  = ($devDbs | ForEach-Object { [double]($_.CurrentCost_Mo  -replace "[^0-9.]","") } | Measure-Object -Sum).Sum
-$totalSavMo = ($devDbs | ForEach-Object { [double]($_.Monthly_Saving  -replace "[^0-9.]","") } | Measure-Object -Sum).Sum
+$totalCurr  = ($devDbs | ForEach-Object { [double]($_.CurrentCost_Mo -replace "[^0-9.]","") } | Measure-Object -Sum).Sum
+$totalSavMo = ($devDbs | ForEach-Object { [double]($_.Monthly_Saving -replace "[^0-9.]","") } | Measure-Object -Sum).Sum
 $totalSavYr = [math]::Round($totalSavMo * 12, 0)
 
-# Build table rows
 $rows = ""
 foreach ($db in $allDbs | Sort-Object @{E={if($_.PilotDB -eq "YES-PILOT"){0}elseif($_.Mode -eq "SERVERLESS"){1}elseif($_.IsProd -eq "PROD"){3}else{2}}}, DatabaseName) {
-
     $bg = if ($db.Mode -eq "SERVERLESS")      { "#e8f5e9" }
           elseif ($db.PilotDB -eq "YES-PILOT") { "#fff8e1" }
           elseif ($db.IsProd  -eq "PROD")       { "#fce4ec" }
           else                                  { "#ffffff" }
 
-    $modeBadge = if ($db.Mode -eq "SERVERLESS") {
-        "<span style='background:#2e7d32;color:white;padding:2px 9px;border-radius:3px;font-size:11px;font-weight:700;'>SERVERLESS</span>"
-    } else {
-        "<span style='background:#1565c0;color:white;padding:2px 9px;border-radius:3px;font-size:11px;'>Standard</span>"
-    }
+    $modeBadge  = if ($db.Mode -eq "SERVERLESS") { "<span style='background:#2e7d32;color:white;padding:2px 9px;border-radius:3px;font-size:11px;font-weight:700;'>SERVERLESS</span>" } else { "<span style='background:#1565c0;color:white;padding:2px 9px;border-radius:3px;font-size:11px;'>Standard</span>" }
+    $pilotBadge = if ($db.PilotDB -eq "YES-PILOT") { "<span style='background:#e65100;color:white;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700;margin-left:5px;'>PILOT</span>" } else { "" }
+    $prodBadge  = if ($db.IsProd -eq "PROD")  { "<span style='background:#c62828;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:5px;'>PROD</span>" } else { "" }
+    $recStyle   = switch -Wildcard ($db.Recommendation) { "Live*" { "color:#1b5e20;font-weight:700;" } "Strong*" { "color:#2e7d32;font-weight:700;" } "Good*" { "color:#388e3c;" } "PROD*" { "color:#c62828;" } default { "color:#757575;" } }
 
-    $pilotBadge = if ($db.PilotDB -eq "YES-PILOT") {
-        "<span style='background:#e65100;color:white;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700;margin-left:5px;'>PILOT</span>"
-    } else { "" }
-
-    $prodBadge = if ($db.IsProd -eq "PROD") {
-        "<span style='background:#c62828;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:5px;'>PROD</span>"
-    } else { "" }
-
-    $recStyle = switch -Wildcard ($db.Recommendation) {
-        "Live*"    { "color:#1b5e20;font-weight:700;" }
-        "Strong*"  { "color:#2e7d32;font-weight:700;" }
-        "Good*"    { "color:#388e3c;font-weight:600;" }
-        "PROD*"    { "color:#c62828;" }
-        default    { "color:#757575;" }
-    }
-
-    $rows += @"
-<tr style='background:$bg;'>
-  <td><b>$($db.DatabaseName)</b>$pilotBadge$prodBadge</td>
-  <td style='font-size:11px;'>$($db.ServerName)</td>
-  <td style='font-size:11px;'>$($db.Subscription)</td>
-  <td>$($db.Tier)</td>
-  <td>$modeBadge</td>
-  <td style='text-align:center;'>$($db.AvgDTU_7Day)</td>
-  <td style='font-weight:600;'>$($db.CurrentCost_Mo)</td>
-  <td style='color:#2e7d32;font-weight:600;'>$($db.Serverless_Cost_Mo)</td>
-  <td style='color:#1b5e20;font-weight:700;'>$($db.Monthly_Saving)</td>
-  <td style='color:#1b5e20;font-weight:700;'>$($db.Annual_Saving)</td>
-  <td style='color:#e65100;font-weight:700;'>$($db.Actual_7Day_Saved)</td>
-  <td style='color:#e65100;font-weight:700;'>$($db.Total_Saved_ToDate)</td>
-  <td style='$recStyle'>$($db.Recommendation)</td>
-</tr>
-"@
+    $rows += "<tr style='background:$bg;'><td><b>$($db.DatabaseName)</b>$pilotBadge$prodBadge</td><td style='font-size:11px;'>$($db.ServerName)</td><td style='font-size:11px;'>$($db.Subscription)</td><td>$($db.Tier)</td><td>$modeBadge</td><td style='text-align:center;'>$($db.AvgDTU_7Day)</td><td style='font-weight:600;'>$($db.CurrentCost_Mo)</td><td style='color:#2e7d32;font-weight:600;'>$($db.Serverless_Cost_Mo)</td><td style='color:#1b5e20;font-weight:700;'>$($db.Monthly_Saving)</td><td style='color:#1b5e20;font-weight:700;'>$($db.Annual_Saving)</td><td style='color:#e65100;font-weight:700;'>$($db.Actual_7Day_Saved)</td><td style='color:#e65100;font-weight:700;'>$($db.Total_Saved_ToDate)</td><td style='$recStyle'>$($db.Recommendation)</td></tr>"
 }
 
 $html = @"
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Serverless Pilot Report</title>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Serverless Pilot Report</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f5;color:#212121;}
 .hdr{background:linear-gradient(135deg,#1b5e20,#2e7d32,#43a047);color:#fff;padding:36px 44px;}
-.hdr h1{font-size:26px;font-weight:700;margin-bottom:8px;}
-.hdr p{font-size:13px;opacity:.92;margin-top:4px;}
+.hdr h1{font-size:26px;font-weight:700;margin-bottom:8px;}.hdr p{font-size:13px;opacity:.92;margin-top:4px;}
 .wrap{max-width:1560px;margin:26px auto;padding:0 26px;}
-.pilot-box{background:#fff;border-radius:10px;padding:24px 28px;margin-bottom:22px;
-           box-shadow:0 2px 12px rgba(0,0,0,.09);border-left:6px solid #e65100;}
+.pilot-box{background:#fff;border-radius:10px;padding:24px 28px;margin-bottom:22px;box-shadow:0 2px 12px rgba(0,0,0,.09);border-left:6px solid #e65100;}
 .pilot-box h2{color:#e65100;font-size:16px;font-weight:700;margin-bottom:16px;}
 .pstats{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
 .ps{background:#fff8e1;border:1px solid #ffcc80;border-radius:8px;padding:14px 8px;text-align:center;}
-.ps .n{font-size:22px;font-weight:700;color:#e65100;}
-.ps .l{font-size:10px;color:#795548;text-transform:uppercase;margin-top:4px;letter-spacing:.3px;line-height:1.5;}
+.ps .n{font-size:22px;font-weight:700;color:#e65100;}.ps .l{font-size:10px;color:#795548;text-transform:uppercase;margin-top:4px;line-height:1.5;}
 .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:22px;}
 .card{background:#fff;border-radius:10px;padding:18px 12px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.09);}
-.card .n{font-size:26px;font-weight:700;margin-bottom:5px;}
-.card .l{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.4px;}
-.g .n{color:#2e7d32;}.b .n{color:#1565c0;}.o .n{color:#e65100;}
-.r .n{color:#c62828;}.t .n{color:#00695c;}.p .n{color:#6a1b9a;}
-.note{background:#e8f5e9;border-left:4px solid #43a047;padding:14px 18px;border-radius:0 6px 6px 0;
-      margin-bottom:22px;font-size:13px;color:#1b5e20;line-height:1.7;}
+.card .n{font-size:26px;font-weight:700;margin-bottom:5px;}.card .l{font-size:10px;color:#666;text-transform:uppercase;}
+.g .n{color:#2e7d32;}.b .n{color:#1565c0;}.o .n{color:#e65100;}.r .n{color:#c62828;}.t .n{color:#00695c;}.p .n{color:#6a1b9a;}
+.note{background:#e8f5e9;border-left:4px solid #43a047;padding:14px 18px;border-radius:0 6px 6px 0;margin-bottom:22px;font-size:13px;color:#1b5e20;line-height:1.7;}
 .sec{background:#fff;border-radius:10px;padding:22px;margin-bottom:22px;box-shadow:0 2px 12px rgba(0,0,0,.09);}
 .sec h2{font-size:15px;color:#1b5e20;border-bottom:2px solid #2e7d32;padding-bottom:9px;margin-bottom:16px;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
@@ -333,13 +304,11 @@ th{background:#1b5e20;color:#fff;padding:11px 9px;text-align:left;white-space:no
 td{padding:10px 9px;border-bottom:1px solid #eee;vertical-align:middle;}
 tr:hover td{background:#f1f8e9!important;}
 .ftr{text-align:center;color:#9e9e9e;font-size:11px;padding:26px;}
-</style>
-</head>
-<body>
+</style></head><body>
 <div class="hdr">
   <h1>Serverless Pilot - Full Evaluation Report</h1>
-  <p>All Databases Across All Subscriptions &nbsp;|&nbsp; 7-Day Actual Results &nbsp;|&nbsp; Full Cost Projections</p>
-  <p>Generated: $(Get-Date -Format 'MMMM dd, yyyy HH:mm:ss') &nbsp;|&nbsp; Prepared for: Tony &nbsp;|&nbsp; Author: Syed Rizvi, Cloud Infrastructure Engineer</p>
+  <p>All Databases Across All Subscriptions | 7-Day Actual Results | Full Cost Projections</p>
+  <p>Generated: $(Get-Date -Format 'MMMM dd, yyyy HH:mm:ss') | Prepared for: Tony | Author: Syed Rizvi, Cloud Infrastructure Engineer</p>
 </div>
 <div class="wrap">
   <div class="pilot-box">
@@ -350,7 +319,7 @@ tr:hover td{background:#f1f8e9!important;}
       <div class="ps"><div class="n">`$$svlMoCost</div><div class="l">Serverless Monthly Cost</div></div>
       <div class="ps"><div class="n">`$$savedPerDay</div><div class="l">Saved Per Day</div></div>
       <div class="ps"><div class="n">`$$saved7Day</div><div class="l">Actual Saved in 7 Days</div></div>
-      <div class="ps"><div class="n">`$$savedToDate</div><div class="l">Total Saved To Date</div></div>
+      <div class="ps"><div class="n">`$$savedToDate</div><div class="l">Total Saved To Date ($daysRunning days)</div></div>
       <div class="ps"><div class="n">`$$saveYrPilot</div><div class="l">Projected Annual Saving</div></div>
     </div>
   </div>
@@ -362,47 +331,22 @@ tr:hover td{background:#f1f8e9!important;}
     <div class="card t"><div class="n">`$$([math]::Round($totalSavMo,0))</div><div class="l">Potential Monthly Saving</div></div>
     <div class="card p"><div class="n">`$$totalSavYr</div><div class="l">Potential Annual Saving</div></div>
   </div>
-  <div class="note">
-    The 7-day pilot on <strong>$pilotDbName</strong> confirmed <strong>70% cost reduction</strong> using serverless auto-pause billing.
-    Applying this to all <strong>$($devDbs.Count) non-production databases</strong> saves
-    <strong>`$$([math]::Round($totalSavMo,0))/month</strong> and <strong>`$$totalSavYr/year</strong>.
-  </div>
+  <div class="note">The 7-day pilot on <strong>$pilotDbName</strong> confirmed <strong>70% cost reduction</strong> using serverless auto-pause. Applying this across all <strong>$($devDbs.Count) non-production databases</strong> saves <strong>`$$([math]::Round($totalSavMo,0))/month</strong> and <strong>`$$totalSavYr/year</strong>.</div>
   <div class="sec">
     <h2>All $($allDbs.Count) Databases - Live Data + Serverless Projections</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Database</th><th>Server</th><th>Subscription</th><th>Tier</th><th>Mode</th>
-          <th>Avg DTU (7d)</th><th>Current /Mo</th><th>Serverless /Mo</th>
-          <th>Save /Mo</th><th>Save /Yr</th><th>7-Day Saved</th><th>Total Saved</th><th>Recommendation</th>
-        </tr>
-      </thead>
-      <tbody>$rows</tbody>
-    </table>
+    <table><thead><tr><th>Database</th><th>Server</th><th>Subscription</th><th>Tier</th><th>Mode</th><th>Avg DTU (7d)</th><th>Current /Mo</th><th>Serverless /Mo</th><th>Save /Mo</th><th>Save /Yr</th><th>7-Day Saved</th><th>Total Saved</th><th>Recommendation</th></tr></thead>
+    <tbody>$rows</tbody></table>
   </div>
 </div>
-<div class="ftr">
-  Serverless Pilot &nbsp;|&nbsp; Pyx Health &nbsp;|&nbsp; $(Get-Date -Format 'yyyy-MM-dd') &nbsp;|&nbsp; Internal Use Only<br>
-  HTML: $HtmlFile &nbsp;|&nbsp; CSV: $CsvFile
-</div>
-</body>
-</html>
+<div class="ftr">Serverless Pilot | Pyx Health | $(Get-Date -Format 'yyyy-MM-dd') | Internal Use Only<br>HTML: $HtmlFile | CSV: $CsvFile</div>
+</body></html>
 "@
 
 $html | Out-File -FilePath $HtmlFile -Encoding UTF8
-
+Write-Host "  HTML: $HtmlFile" -ForegroundColor Green
+Write-Host "  CSV : $CsvFile"  -ForegroundColor Green
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Green
-Write-Host "  DONE - FILES SAVED TO YOUR DESKTOP" -ForegroundColor Green
-Write-Host ""
-Write-Host "  HTML : $HtmlFile" -ForegroundColor Cyan
-Write-Host "  CSV  : $CsvFile"  -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  Total Databases  : $($allDbs.Count)" -ForegroundColor White
-Write-Host "  Monthly Spend    : `$$([math]::Round($totalCurr,0))" -ForegroundColor White
-Write-Host "  Monthly Saving   : `$$([math]::Round($totalSavMo,0))" -ForegroundColor White
-Write-Host "  Annual Saving    : `$$totalSavYr" -ForegroundColor White
+Write-Host "  DONE | DBs: $($allDbs.Count) | Save/Mo: `$$([math]::Round($totalSavMo,0)) | Save/Yr: `$$totalSavYr" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
-Write-Host ""
-
 Start-Process $HtmlFile
