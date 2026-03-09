@@ -1,0 +1,70 @@
+$kvNames = @(
+    "kv-pyx-prod","kv-pyx-test","kv-pyx-qa",
+    "kv-extracts-prod","kv-pyx-stage","kv-extracts-preprod",
+    "kv-target-pop-prod","kv-target-pop-preprod",
+    "kv-datasystem-prod","kv-datasystem-antprod",
+    "kv-datasystem-test","kv-datasystem-qa",
+    "kv-backend-automation","kv-pyx-hygiene-prod",
+    "kv-pyx-hygiene-preprod","kv-fileingestion-prod",
+    "kv-fileingestion-preprod","kv-testmi",
+    "kv-analytics-preprod","kv-analyticsdb-prod",
+    "kv-coneng-test","kv-pyx-data-hub-preprod",
+    "kv-pyx-data-hub-test","kv-peer-platform-prod",
+    "kv-pyx-data-hub-prod","kv-pyx-coneng-sandbox",
+    "kv-aics-sandbox","DiskEncryptPyx"
+)
+
+$fixed = 0
+$failed = 0
+$subscriptions = Get-AzSubscription
+
+foreach ($sub in $subscriptions) {
+    Set-AzContext -SubscriptionId $sub.Id | Out-Null
+
+    # FIX: Specify correct resource for ARM token
+    $token = (Get-AzAccessToken -ResourceUrl "https://management.azure.com/").Token
+
+    foreach ($kv in $kvNames) {
+        $vault = Get-AzKeyVault -VaultName $kv -ErrorAction SilentlyContinue
+        if (-not $vault) { continue }
+
+        Write-Host "FOUND: $kv in RG: $($vault.ResourceGroup)" -ForegroundColor Cyan
+
+        try {
+            $rg = $vault.ResourceGroup
+            $subId = $sub.Id
+
+            $uri = "https://management.azure.com/subscriptions/$subId/resourceGroups/$rg/providers/Microsoft.KeyVault/vaults/$($kv)?api-version=2022-07-01"
+
+            # GET current config
+            $current = Invoke-RestMethod -Uri $uri `
+                -Headers @{Authorization="Bearer $token"} `
+                -Method GET
+
+            Write-Host "  PurgeProt BEFORE: $($current.properties.enablePurgeProtection)" -ForegroundColor Yellow
+
+            # SET purge protection
+            $current.properties.enablePurgeProtection = $true
+            $body = $current | ConvertTo-Json -Depth 10
+
+            $response = Invoke-RestMethod -Uri $uri `
+                -Headers @{
+                    Authorization="Bearer $token"
+                    "Content-Type"="application/json"
+                } `
+                -Method PUT -Body $body
+
+            Write-Host "  [FIXED] $kv ✅" -ForegroundColor Green
+            $fixed++
+
+        } catch {
+            Write-Host "  [ERROR] $kv - $($_.Exception.Message)" -ForegroundColor Red
+            $failed++
+        }
+    }
+}
+
+Write-Host "`n================================" -ForegroundColor White
+Write-Host "  FIXED:  $fixed" -ForegroundColor Green
+Write-Host "  FAILED: $failed" -ForegroundColor Red
+Write-Host "================================" -ForegroundColor White
