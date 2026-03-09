@@ -1,0 +1,11 @@
+$kvNames = @("kv-pyx-prod","kv-pyx-test","kv-pyx-qa","kv-extracts-prod","kv-pyx-stage","kv-extracts-preprod","kv-target-pop-prod","kv-target-pop-preprod","kv-datasystem-prod","kv-datasystem-antprod","kv-datasystem-test","kv-datasystem-qa","kv-backend-automation","kv-pyx-hygiene-prod","kv-pyx-hygiene-preprod","kv-fileingestion-prod","kv-fileingestion-preprod","kv-testmi","kv-analytics-preprod","kv-analyticsdb-prod","kv-coneng-test","kv-pyx-data-hub-preprod","kv-pyx-data-hub-test","kv-peer-platform-prod","kv-pyx-data-hub-prod","kv-pyx-coneng-sandbox","kv-aics-sandbox","DiskEncryptPyx")
+
+foreach ($sub in Get-AzSubscription) {
+    Set-AzContext -SubscriptionId $sub.Id | Out-Null
+    foreach ($kv in $kvNames) {
+        $vault = Get-AzKeyVault -VaultName $kv -ErrorAction SilentlyContinue
+        if (-not $vault) { continue }
+        Update-AzKeyVault -VaultName $kv -ResourceGroupName $vault.ResourceGroup -EnablePurgeProtection
+        Write-Host "[FIXED] $kv" -ForegroundColor Green
+    }
+}
