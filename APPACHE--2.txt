@@ -1,0 +1,48 @@
+# Run on vm-moveit-auto as Administrator
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client"
+Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server"
+
+-------------------------------------------------------------------------------------------------------------------
+
+# See what was installed yesterday
+Get-HotFix | Where-Object {$_.InstalledOn -ge (Get-Date).AddDays(-2)} | Select-Object HotFixID, Description, InstalledOn
+
+----------------------------------------------------------------------------------------------------------------------
+
+# Force enable TLS 1.2 on Server
+$path = "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server"
+New-Item -Path $path -Force | Out-Null
+Set-ItemProperty -Path $path -Name "Enabled" -Value 1 -Type DWord
+Set-ItemProperty -Path $path -Name "DisabledByDefault" -Value 0 -Type DWord
+
+# Force enable TLS 1.2 on Client
+$path2 = "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client"
+New-Item -Path $path2 -Force | Out-Null
+Set-ItemProperty -Path $path2 -Name "Enabled" -Value 1 -Type DWord
+Set-ItemProperty -Path $path2 -Name "DisabledByDefault" -Value 0 -Type DWord
+
+Write-Host "TLS 1.2 re-enabled - restart Apache service now"
+
+
+------------------------------------------------------------------------------------------------------------------------
+
+
+Restart-Service -Name "Apache*" -Force
+Write-Host "Apache restarted - test MOVEit Auto portal now"
+
+
+-------------------------------------------------------------------------------------
+
+RUN THIS COMMAND FIRST ONLY AND GIVE ME A SCREEN SHOT PELASE. 
+
+
+# READ ONLY - no changes - just shows the error
+Get-Content "C:\MOVEitAuto\Apache\logs\error.log" -Tail 50
+
+----------------------------------------------------------------------------------------
+
+THEN RUN THIS COMMANBD ONLY GIVE ME A SCREEN SHOT. 
+
+# Check Windows Event Log for Apache errors
+Get-EventLog -LogName Application -Source "*Apache*" -Newest 20 | 
+    Select-Object TimeGenerated, EntryType, Message
