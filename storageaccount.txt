@@ -1,0 +1,4 @@
+# Find storage accounts changed 2 days ago in prod sub
+Get-AzStorageAccount | Where-Object {
+    $_.AllowBlobPublicAccess -eq $false
+} | Select-Object StorageAccountName, ResourceGroupName
