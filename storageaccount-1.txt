@@ -1,0 +1,18 @@
+# Re-enable public blob access on ALL storage accounts in ALL subscriptions
+$subs = Get-AzSubscription
+foreach ($sub in $subs) {
+    Set-AzContext -SubscriptionId $sub.Id
+    $accounts = Get-AzStorageAccount
+    foreach ($sa in $accounts) {
+        try {
+            Set-AzStorageAccount `
+                -ResourceGroupName $sa.ResourceGroupName `
+                -Name $sa.StorageAccountName `
+                -AllowBlobPublicAccess $true
+            Write-Host "FIXED: $($sa.StorageAccountName)" -ForegroundColor Green
+        } catch {
+            Write-Host "SKIPPED: $($sa.StorageAccountName) - $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+}
+Write-Host "DONE - All storage accounts public access restored" -ForegroundColor Cyan
