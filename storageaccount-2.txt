@@ -1,0 +1,1 @@
+"Hey Nathan — images are restored. This is a temporary fix. Your dev team needs to update the Pyx mobile app to use SAS token URLs instead of public blob access. Once the app is updated I will re-disable public access and we stay compliant with Defender. How soon can the dev team make that change?"
