@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PYX Health - Speech API v3.0 Final Report</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #f8fafc; color: #1e293b; }
+  .hdr { background: #065f46; color: #fff; padding: 28px 40px; }
+  .hdr h1 { margin: 0; font-size: 24px; }
+  .hdr p { margin: 6px 0 0; opacity: .85; font-size: 13px; }
+  .result { background: #d1fae5; border-left: 8px solid #065f46; padding: 20px 40px; }
+  .result h2 { margin: 0; font-size: 22px; color: #065f46; }
+  .result p { margin: 6px 0 0; color: #065f46; font-size: 14px; }
+  .alert { background: #fef3c7; border-left: 6px solid #d97706; padding: 12px 40px; font-size: 13px; color: #92400e; font-weight: bold; }
+  .kpi { display: flex; gap: 16px; padding: 20px 40px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+  .kpi-box { flex: 1; border-radius: 8px; padding: 16px; text-align: center; }
+  .val { font-size: 32px; font-weight: 700; }
+  .lbl { font-size: 12px; margin-top: 4px; }
+  .green { background: #d1fae5; } .green .val { color: #065f46; }
+  .blue  { background: #dbeafe; } .blue  .val { color: #1e40af; }
+  .gray  { background: #f1f5f9; } .gray  .val { color: #374151; }
+  .sec { padding: 24px 40px; }
+  .sec h2 { color: #1e3a8a; font-size: 16px; border-bottom: 2px solid #1e3a8a; padding-bottom: 6px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #1e3a8a; color: #fff; padding: 10px 12px; text-align: left; }
+  td { padding: 9px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  tr:hover { background: #f1f5f9; }
+  .badge-clean { background: #d1fae5; color: #065f46; padding: 3px 12px; border-radius: 12px; font-weight: bold; font-size: 12px; }
+  .badge-manual { background: #dbeafe; color: #1e40af; padding: 3px 12px; border-radius: 12px; font-weight: bold; font-size: 12px; }
+  .scope-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .scope-item { background: #f1f5f9; border-radius: 6px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
+  .scope-dot { width: 10px; height: 10px; border-radius: 50%; background: #065f46; flex-shrink: 0; }
+  .scope-text { font-size: 13px; }
+  .conclusion { background: #1e3a8a; color: #fff; padding: 24px 40px; margin-top: 8px; }
+  .conclusion h2 { margin: 0 0 12px; font-size: 18px; }
+  .conclusion p { margin: 0; font-size: 14px; line-height: 1.7; opacity: .9; }
+  .ftr { padding: 16px 40px; text-align: center; color: #94a3b8; font-size: 11px; border-top: 1px solid #e2e8f0; }
+  .manual-note { background: #eff6ff; border-left: 4px solid #1e40af; padding: 10px 16px; font-size: 12px; color: #1e40af; margin-top: 8px; border-radius: 0 4px 4px 0; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <h1>PYX Health - Speech-to-Text API v3.0 Final Scan Report</h1>
+  <p>Generated: March 30, 2026 at 18:24 | Deep Scan + Manual Verification | Author: Syed Rizvi | IT Infrastructure Lead</p>
+</div>
+
+<!-- RESULT BANNER -->
+<div class="result">
+  <h2>RESULT: 100% CLEAN - ZERO ISSUES FOUND ACROSS ALL 13 SUBSCRIPTIONS</h2>
+  <p>Full automated deep scan across 12 subscriptions + manual portal verification of Sub-Drivers-Health-Prod. PYX Health is NOT impacted by the March 31, 2026 Speech API v3.0 retirement.</p>
+</div>
+
+<!-- ALERT -->
+<div class="alert">
+  Microsoft Speech-to-text REST API v3.0 retires March 31, 2026 - TOMORROW. PYX Health confirmed fully clean. No action required.
+</div>
+
+<!-- KPIs -->
+<div class="kpi">
+  <div class="kpi-box gray"><div class="val">13</div><div class="lbl">Subscriptions Verified</div></div>
+  <div class="kpi-box green"><div class="val">0</div><div class="lbl">Issues Found</div></div>
+  <div class="kpi-box green"><div class="val">8</div><div class="lbl">Resource Types Scanned</div></div>
+  <div class="kpi-box green"><div class="val">CLEAN</div><div class="lbl">Final Status</div></div>
+</div>
+
+<!-- SCOPE -->
+<div class="sec">
+  <h2>WHAT WAS SCANNED - 8 RESOURCE TYPES</h2>
+  <div class="scope-grid">
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>App Services</strong> - All application settings scanned</div></div>
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>Function Apps</strong> - All app settings and config scanned</div></div>
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>Cognitive Services</strong> - All Speech accounts checked</div></div>
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>Logic Apps</strong> - Full workflow definitions scanned</div></div>
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>Container Apps</strong> - All environment variables scanned</div></div>
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>Key Vault Secrets</strong> - All SPEECH and STT secrets checked</div></div>
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>API Management</strong> - Backends and named values checked</div></div>
+    <div class="scope-item"><div class="scope-dot"></div><div class="scope-text"><strong>App Configuration</strong> - All config store keys scanned</div></div>
+  </div>
+</div>
+
+<!-- SUBSCRIPTION RESULTS -->
+<div class="sec">
+  <h2>ALL 13 SUBSCRIPTION RESULTS</h2>
+  <table>
+    <tr>
+      <th>Subscription</th>
+      <th>Subscription ID</th>
+      <th>Tenant</th>
+      <th>Issues Found</th>
+      <th>Verification Method</th>
+      <th>Status</th>
+    </tr>
+    <tr><td>sub-corp-prod-001</td><td style="font-family:Courier New;font-size:11px">e42e94b5-c6f8-4af0-a41b-16fda520de6e</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>sub-dataAnalytics-preProd</td><td style="font-family:Courier New;font-size:11px">abcadd97-a465-41eb-8288-fef36da59fd5</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>sub-dataAnalytics-prod</td><td style="font-family:Courier New;font-size:11px">cf3b06f3-3865-48a4-8ded-2a97914f2f97</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>sub-Drivers-Health-Test</td><td style="font-family:Courier New;font-size:11px">fab2f5b8-5b17-4105-9348-8c4903e11748</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr>
+      <td><strong>Sub-Drivers-Health-Prod</strong></td>
+      <td style="font-family:Courier New;font-size:11px">302aceb9-3ab3-4110-bb3e-84e0c118829a</td>
+      <td>Pyx Applications</td>
+      <td>0</td>
+      <td><span class="badge-manual">Manual Portal Verification</span></td>
+      <td><span class="badge-clean">CLEAN</span></td>
+    </tr>
+    <tr><td>sub-it-management</td><td style="font-family:Courier New;font-size:11px">a90514d9-361b-4119-a013-585d6765b35d</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>sub-product-preProd</td><td style="font-family:Courier New;font-size:11px">52d0d667-a89a-4fe0-be5c-3fb2d72e90ed</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>sub-product-prod</td><td style="font-family:Courier New;font-size:11px">730dd182-eb99-4f54-8f4c-698a5338013f</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>Sub-Production</td><td style="font-family:Courier New;font-size:11px">da72e6ae-e86d-4dfb-a5fd-dd6b2c96ae05</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>sub-sandbox</td><td style="font-family:Courier New;font-size:11px">076fbf87-2655-4fb0-810e-98cb4e1266dc</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>Sub-Staging</td><td style="font-family:Courier New;font-size:11px">e0ecde18-5086-4ee7-855a-8261a328eddc</td><td>Pyx Applications</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>Azure-subscription-1</td><td style="font-family:Courier New;font-size:11px">977e4f83-3649-428b-9416-cf9adfe24cec</td><td>Pyx Health Corporate</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>sub-csc-avd</td><td style="font-family:Courier New;font-size:11px">7edfb9f6-940e-47cd-af4b-04d0b6e6020f</td><td>Pyx Health Corporate</td><td>0</td><td>Automated Script</td><td><span class="badge-clean">CLEAN</span></td></tr>
+  </table>
+  <div class="manual-note">
+    Sub-Drivers-Health-Prod was verified manually via Azure Portal. All 6 resource groups inspected individually. rg-drivershealth-app-prod contains one App Service (appsvc-drivershealth-api-prod) with zero environment variables configured. All other resource groups are empty. No Speech API v3.0 references found.
+  </div>
+</div>
+
+<!-- SCAN DETAILS FOR DRIVERS HEALTH -->
+<div class="sec">
+  <h2>SUB-DRIVERS-HEALTH-PROD - MANUAL VERIFICATION DETAIL</h2>
+  <table>
+    <tr><th>Resource Group</th><th>Resources Inside</th><th>Speech API Risk</th><th>Status</th></tr>
+    <tr><td>NetworkWatcherRG</td><td>NetworkWatcher_centralus only</td><td>None - network monitoring only</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>rg-drivershealth-app-prod</td><td>appsvc-drivershealth-api-prod (App Service) - ZERO environment variables</td><td>None - no app settings configured</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>rg-drivershealth-backend-prod</td><td>vnet-drivershealth-prod (Virtual Network only)</td><td>None - networking resource</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>rg-drivershealth-config-prod</td><td>Empty - no resources</td><td>None</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>rg-drivershealth-database-prod</td><td>Empty - no resources</td><td>None</td><td><span class="badge-clean">CLEAN</span></td></tr>
+    <tr><td>rg-drivershealth-speech-prod</td><td>Empty - no resources deployed</td><td>None - resource group exists but empty</td><td><span class="badge-clean">CLEAN</span></td></tr>
+  </table>
+</div>
+
+<!-- CONCLUSION -->
+<div class="conclusion">
+  <h2>CONCLUSION</h2>
+  <p>PYX Health is confirmed NOT impacted by the Microsoft Speech-to-text REST API v3.0 retirement on March 31, 2026. A comprehensive scan was performed using two methods: (1) automated PowerShell deep scan across 12 subscriptions checking 8 resource types in 143 seconds, and (2) manual Azure Portal verification of Sub-Drivers-Health-Prod examining all 6 resource groups individually. Zero Speech API v3.0 references were found anywhere across the entire PYX Health Azure footprint. No remediation action is required. Our environment will not experience any service interruption due to this retirement.</p>
+</div>
+
+<div class="ftr">
+  PYX Health | IT Infrastructure | Syed Rizvi | March 30, 2026 | CONFIDENTIAL - Internal Use Only
+</div>
+
+</body>
+</html>
