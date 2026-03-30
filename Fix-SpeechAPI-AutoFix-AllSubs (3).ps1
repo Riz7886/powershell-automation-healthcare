@@ -1,15 +1,17 @@
 <#
 .SYNOPSIS
-    PYX Health - Speech API v3.0 Auto Fix
+    PYX Health - Speech API v3.0 Safe Fix - All 13 Subscriptions
     Author:  Syed Rizvi
-    Version: 5.0
+    Version: 11.0 FINAL
     Date:    March 2026
 .EXAMPLE
-    .\Fix-SpeechAPI-AutoFix-AllSubs.ps1
-    .\Fix-SpeechAPI-AutoFix-AllSubs.ps1 -ReportOnly $true
+    .\Fix-SpeechAPI-AutoFix-AllSubs.ps1 -Mode REPORT
+    .\Fix-SpeechAPI-AutoFix-AllSubs.ps1 -Mode TEST
+    .\Fix-SpeechAPI-AutoFix-AllSubs.ps1 -Mode FIXALL
 #>
 param(
-    [bool]$ReportOnly   = $false,
+    [ValidateSet("REPORT","TEST","FIXALL")]
+    [string]$Mode = "REPORT",
     [string]$OutputPath = "."
 )
 
@@ -18,88 +20,96 @@ $WarningPreference     = "SilentlyContinue"
 $NewVersion            = "2024-11-15"
 $StartTime             = Get-Date
 $AllResults            = [System.Collections.ArrayList]::new()
+$BackupFolder          = Join-Path $OutputPath "PYX-Backups-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+
+# BOTH TENANT IDs
+$Tenant1 = "4504822a-07ef-4037-94c0-e632d4ad1a72"  # Pyx Applications Tenant
+$Tenant2 = "8ef3d734-3ca5-4493-8d8b-52b2c54eab04"  # Pyx Health Corporate
+
+# ALL 13 SUBSCRIPTIONS HARDCODED
+$AllSubscriptions = @(
+    @{ Name = "sub-corp-prod-001";         Id = "e42e94b5-c6f8-4af0-a41b-16fda520de6e"; Tenant = $Tenant1 },
+    @{ Name = "sub-dataAnalytics-preProd"; Id = "abcadd97-a465-41eb-8288-fef36da59fd5"; Tenant = $Tenant1 },
+    @{ Name = "sub-dataAnalytics-prod";    Id = "cf3b06f3-3865-48a4-8ded-2a97914f2f97"; Tenant = $Tenant1 },
+    @{ Name = "sub-Drivers-Health-Test";   Id = "fab2f5b8-5b17-4105-9348-8c4903e11748"; Tenant = $Tenant1 },
+    @{ Name = "Sub-Drivers-Health-Prod";   Id = "302aceb9-3ab3-4110-bb3e-64e0c118829a"; Tenant = $Tenant1 },
+    @{ Name = "sub-it-management";         Id = "a90514d9-361b-4119-a013-585d6765b35d"; Tenant = $Tenant1 },
+    @{ Name = "sub-product-preProd";       Id = "52d0d667-a89a-4fe0-be5c-3fb2d72e90ed"; Tenant = $Tenant1 },
+    @{ Name = "sub-product-prod";          Id = "730dd182-eb99-4f54-8f4c-698a5338013f"; Tenant = $Tenant1 },
+    @{ Name = "Sub-Production";            Id = "da72e6ae-e86d-4dfb-a5fd-dd6b2c96ae05"; Tenant = $Tenant1 },
+    @{ Name = "sub-sandbox";              Id = "076fbf87-2655-4fb0-810e-98cb4e1266dc"; Tenant = $Tenant1 },
+    @{ Name = "Sub-Staging";              Id = "e0ecde18-5086-4ee7-855a-8261a328eddc"; Tenant = $Tenant1 },
+    @{ Name = "Azure-subscription-1";     Id = "977e4f83-3649-428b-9416-cf9adfe24cec"; Tenant = $Tenant2 },
+    @{ Name = "sub-csc-avd";              Id = "7edfb9f6-940e-47cd-af4b-04d0b6e6020f"; Tenant = $Tenant2 }
+)
+
+$TestSubId = "076fbf87-2655-4fb0-810e-98cb4e1266dc"  # sub-sandbox
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
     $Prefix = switch ($Level) {
-        "SUCCESS" { "[DONE]  " } "WARN" { "[WARN]  " }
-        "ERROR"   { "[ERROR] " } "SCAN" { "[SCAN]  " }
-        "FIX"     { "[FIX]   " } default { "[INFO]  " }
+        "SUCCESS" { "[DONE]  " } "WARN"   { "[WARN]  " }
+        "ERROR"   { "[ERROR] " } "SCAN"   { "[SCAN]  " }
+        "FIX"     { "[FIX]   " } "BACKUP" { "[BACK]  " }
+        default   { "[INFO]  " }
     }
     $Color = switch ($Level) {
-        "SUCCESS" { "Green" } "WARN"  { "Yellow" }
-        "ERROR"   { "Red"   } "SCAN"  { "Cyan"   }
-        "FIX"     { "Magenta" } default { "White" }
+        "SUCCESS" { "Green"    } "WARN"   { "Yellow"   }
+        "ERROR"   { "Red"      } "SCAN"   { "Cyan"     }
+        "FIX"     { "Magenta"  } "BACKUP" { "DarkCyan" }
+        default   { "White"    }
     }
     Write-Host "$Prefix[$(Get-Date -Format 'HH:mm:ss')] $Message" -ForegroundColor $Color
 }
 
 function Write-Line { Write-Host ("=" * 70) -ForegroundColor Blue }
 
+Clear-Host
 Write-Line
-Write-Host "  PYX HEALTH - SPEECH API v3.0 AUTO FIX ALL SUBSCRIPTIONS" -ForegroundColor White
-Write-Host "  Author: Syed Rizvi | Mode: $(if ($ReportOnly) { 'REPORT ONLY' } else { 'AUTO FIX' })" -ForegroundColor Gray
+Write-Host "  PYX HEALTH - SPEECH API v3.0 SAFE FIX - ALL 13 SUBSCRIPTIONS" -ForegroundColor White
+Write-Host "  Author: Syed Rizvi | Mode: $Mode" -ForegroundColor Gray
 Write-Line
 
-# STEP 1 - CHECK LOGIN
-$Ctx = Get-AzContext
-if (-not $Ctx -or -not $Ctx.Account) {
-    Write-Log "Not logged in. Run Connect-AzAccount first." "ERROR"
+# STEP 1 - GET CURRENT LOGIN
+Write-Log "Checking Azure login..." "SCAN"
+$ctx = Get-AzContext
+if (-not $ctx -or -not $ctx.Account) {
+    Write-Log "Not logged in. Run: Connect-AzAccount then re-run." "ERROR"
     exit 1
 }
-Write-Log "Logged in as: $($Ctx.Account.Id)" "SUCCESS"
+$AccountId = $ctx.Account.Id
+Write-Log "Logged in as: $AccountId" "SUCCESS"
 
-# STEP 2 - GET ALL TENANTS THEN ALL SUBS ACROSS ALL TENANTS
-Write-Log "Getting all tenants and subscriptions..." "SCAN"
+# STEP 2 - CONNECT TO BOTH TENANTS SILENTLY USING EXISTING ACCOUNT
+# Using -AccountId forces cached SSO token - no browser popup
+Write-Log "Connecting to Pyx Applications Tenant..." "SCAN"
+Connect-AzAccount -TenantId $Tenant1 -AccountId $AccountId -SkipContextPopulation -WarningAction SilentlyContinue | Out-Null
+Write-Log "Connecting to Pyx Health Corporate Tenant..." "SCAN"
+Connect-AzAccount -TenantId $Tenant2 -AccountId $AccountId -SkipContextPopulation -WarningAction SilentlyContinue | Out-Null
+Write-Log "Both tenants connected" "SUCCESS"
+Write-Log "Mode: $Mode | Subs: 13 | Retirement: March 31 2026 - TOMORROW" "WARN"
+Write-Host ""
 
-$AllSubs = [System.Collections.ArrayList]::new()
+# STEP 3 - LOOP ALL 13 SUBS
+$subNum = 0
+foreach ($sub in $AllSubscriptions) {
+    $subNum++
 
-# Get all tenants this account has access to
-$Tenants = Get-AzTenant
-foreach ($Tenant in $Tenants) {
-    Write-Log "Checking tenant: $($Tenant.Id)" "SCAN"
-    $TenantSubs = Get-AzSubscription -TenantId $Tenant.Id
-    foreach ($Sub in $TenantSubs) {
-        $null = $AllSubs.Add($Sub)
-        Write-Log "  Found sub: $($Sub.Name) | $($Sub.Id)" "SCAN"
-    }
-}
+    if ($Mode -eq "TEST" -and $sub.Id -ne $TestSubId) { continue }
 
-# Fallback - if tenants returned nothing try direct
-if ($AllSubs.Count -eq 0) {
-    Write-Log "Trying direct subscription lookup..." "WARN"
-    $DirectSubs = Get-AzSubscription -TenantId $Ctx.Tenant.Id
-    foreach ($Sub in $DirectSubs) {
-        $null = $AllSubs.Add($Sub)
-        Write-Log "  Found sub: $($Sub.Name) | $($Sub.Id)" "SCAN"
-    }
-}
-
-if ($AllSubs.Count -eq 0) {
-    Write-Log "Still 0 subs. Run this command manually and paste the output:" "ERROR"
-    Write-Log "  Get-AzSubscription | Select Name, Id, State" "ERROR"
-    exit 1
-}
-
-Write-Log "Total subscriptions found: $($AllSubs.Count)" "SUCCESS"
-
-# STEP 3 - SCAN AND FIX EACH SUB
-for ($s = 0; $s -lt $AllSubs.Count; $s++) {
-
-    $Sub = $AllSubs[$s]
     Write-Line
-    Write-Log "[$($s+1)/$($AllSubs.Count)] Scanning: $($Sub.Name)" "SCAN"
-    Write-Line
+    Write-Log "[$subNum/13] $($sub.Name)" "SCAN"
 
-    $Switched = Set-AzContext -SubscriptionId $Sub.Id -TenantId $Sub.TenantId -WarningAction SilentlyContinue
-    if (-not $Switched) {
-        Write-Log "Cannot switch to $($Sub.Name) - skipping" "WARN"
+    $switched = Set-AzContext -SubscriptionId $sub.Id -TenantId $sub.Tenant -WarningAction SilentlyContinue
+    if (-not $switched) {
+        Write-Log "Cannot access $($sub.Name) - skipping" "WARN"
         continue
     }
+    Write-Log "Context OK: $($sub.Name)" "SUCCESS"
 
     $SubResult = [PSCustomObject]@{
-        SubscriptionName = $Sub.Name
-        SubscriptionId   = $Sub.Id
+        SubscriptionName = $sub.Name
+        SubscriptionId   = $sub.Id
         Found            = [System.Collections.ArrayList]::new()
         Fixed            = [System.Collections.ArrayList]::new()
         Errors           = [System.Collections.ArrayList]::new()
@@ -107,85 +117,92 @@ for ($s = 0; $s -lt $AllSubs.Count; $s++) {
 
     # Scan Cognitive Services
     Write-Log "Scanning Cognitive Services..." "SCAN"
-    $CogList = Get-AzCognitiveServicesAccount
-    foreach ($Cog in $CogList) {
-        if ($Cog.Kind -in @("SpeechServices","CognitiveServices","SpeechTranslation")) {
-            Write-Log "Found Speech Service: $($Cog.AccountName)" "WARN"
+    $cogList = Get-AzCognitiveServicesAccount
+    foreach ($cog in $cogList) {
+        if ($cog.Kind -in @("SpeechServices","CognitiveServices","SpeechTranslation")) {
+            Write-Log "Found Speech Service: $($cog.AccountName)" "WARN"
             $null = $SubResult.Found.Add([PSCustomObject]@{
                 Type          = "Cognitive Service"
-                Name          = $Cog.AccountName
-                ResourceGroup = $Cog.ResourceGroupName
-                Location      = $Cog.Location
-                OldValue      = "v3.0 endpoint risk"
+                Name          = $cog.AccountName
+                ResourceGroup = $cog.ResourceGroupName
+                Location      = $cog.Location
+                OldValue      = "v3.0 endpoint in use"
                 NewValue      = "Update app code to endpoint version $NewVersion"
                 Fixed         = $false
+                Note          = "Update application code manually"
             })
         }
     }
 
-    # Scan App Services and Function Apps
-    Write-Log "Scanning App Services..." "SCAN"
-    $AppList = Get-AzWebApp
-    $AppCount = 0
-    foreach ($x in $AppList) { $AppCount++ }
-    Write-Log "Checking $AppCount apps..." "SCAN"
+    # Scan App Services
+    Write-Log "Scanning App Services and Function Apps..." "SCAN"
+    $apps = Get-AzWebApp
+    $cnt = 0; foreach ($x in $apps) { $cnt++ }
+    Write-Log "Found $cnt apps" "SCAN"
 
-    foreach ($App in $AppList) {
+    foreach ($app in $apps) {
+        $full = Get-AzWebApp -ResourceGroupName $app.ResourceGroup -Name $app.Name
+        if (-not $full -or -not $full.SiteConfig -or -not $full.SiteConfig.AppSettings) { continue }
 
-        $AppFull = Get-AzWebApp -ResourceGroupName $App.ResourceGroup -Name $App.Name
-        if (-not $AppFull)                         { continue }
-        if (-not $AppFull.SiteConfig)              { continue }
-        if (-not $AppFull.SiteConfig.AppSettings)  { continue }
-
-        $MatchedSettings = [System.Collections.ArrayList]::new()
-        foreach ($S in $AppFull.SiteConfig.AppSettings) {
-            if (($S.Name  -like "*SPEECH*")            -or
-                ($S.Name  -like "*STT*")               -or
-                ($S.Value -like "*speechtotext/v3.0*") -or
-                ($S.Value -like "*/v3.0*")) {
-                $null = $MatchedSettings.Add($S)
+        $matched = [System.Collections.ArrayList]::new()
+        foreach ($s in $full.SiteConfig.AppSettings) {
+            if (($s.Name  -like "*SPEECH*")            -or
+                ($s.Name  -like "*STT*")               -or
+                ($s.Value -like "*speechtotext/v3.0*") -or
+                ($s.Value -like "*/v3.0*")) {
+                $null = $matched.Add($s)
             }
         }
-        if ($MatchedSettings.Count -eq 0) { continue }
+        if ($matched.Count -eq 0) { continue }
 
-        $AppType = if ($App.Kind -like "*functionapp*") { "Function App" } else { "Web App" }
-        Write-Log "Found speech settings in $AppType $($App.Name)" "WARN"
+        $appType = if ($app.Kind -like "*functionapp*") { "Function App" } else { "Web App" }
+        Write-Log "Found speech settings in $appType $($app.Name)" "WARN"
 
-        $NewHash     = @{}
-        $NeedsUpdate = $false
-        foreach ($S in $AppFull.SiteConfig.AppSettings) { $NewHash[$S.Name] = $S.Value }
+        $newHash = @{}
+        $needsUpdate = $false
+        foreach ($s in $full.SiteConfig.AppSettings) { $newHash[$s.Name] = $s.Value }
 
-        foreach ($S in $MatchedSettings) {
-            $OldVal = $S.Value
-            $NewVal = $OldVal -replace "speechtotext/v3\.0","speechtotext/$NewVersion" `
+        foreach ($s in $matched) {
+            $oldVal = $s.Value
+            $newVal = $oldVal -replace "speechtotext/v3\.0","speechtotext/$NewVersion" `
                                -replace "/v3\.0","/$NewVersion"
             $null = $SubResult.Found.Add([PSCustomObject]@{
-                Type          = $AppType
-                Name          = $App.Name
-                ResourceGroup = $App.ResourceGroup
-                Location      = $App.Location
-                OldValue      = "$($S.Name) = $OldVal"
-                NewValue      = "$($S.Name) = $NewVal"
+                Type          = $appType
+                Name          = $app.Name
+                ResourceGroup = $app.ResourceGroup
+                Location      = $app.Location
+                OldValue      = "$($s.Name) = $oldVal"
+                NewValue      = "$($s.Name) = $newVal"
                 Fixed         = $false
+                Note          = ""
             })
-            if ($OldVal -ne $NewVal) {
-                $NewHash[$S.Name] = $NewVal
-                $NeedsUpdate      = $true
-                Write-Log "  $($S.Name): $OldVal --> $NewVal" "FIX"
+            if ($oldVal -ne $newVal) {
+                $newHash[$s.Name] = $newVal
+                $needsUpdate = $true
+                Write-Log "  $($s.Name): $oldVal --> $newVal" "FIX"
             }
         }
 
-        if ($NeedsUpdate -and (-not $ReportOnly)) {
-            $Fix = Set-AzWebApp -ResourceGroupName $App.ResourceGroup -Name $App.Name -AppSettings $NewHash
-            if ($Fix) {
-                Write-Log "FIXED: $($App.Name)" "SUCCESS"
-                $null = $SubResult.Fixed.Add($App.Name)
-                foreach ($Item in $SubResult.Found) {
-                    if ($Item.Name -eq $App.Name) { $Item.Fixed = $true }
+        if ($needsUpdate -and ($Mode -eq "TEST" -or $Mode -eq "FIXALL")) {
+            if (-not (Test-Path $BackupFolder)) { New-Item -ItemType Directory -Path $BackupFolder | Out-Null }
+            $backupFile = Join-Path $BackupFolder "$($sub.Name)-$($app.Name).json"
+            $full.SiteConfig.AppSettings | ConvertTo-Json | Out-File $backupFile -Encoding UTF8
+            Write-Log "Backup: $backupFile" "BACKUP"
+
+            $fix = Set-AzWebApp -ResourceGroupName $app.ResourceGroup -Name $app.Name -AppSettings $newHash
+            if ($fix) {
+                Write-Log "FIXED: $($app.Name)" "SUCCESS"
+                $null = $SubResult.Fixed.Add($app.Name)
+                foreach ($item in $SubResult.Found) {
+                    if ($item.Name -eq $app.Name) { $item.Fixed = $true }
                 }
             } else {
-                Write-Log "Fix failed: $($App.Name)" "ERROR"
-                $null = $SubResult.Errors.Add("Fix failed: $($App.Name)")
+                Write-Log "Fix failed: $($app.Name) - restoring..." "ERROR"
+                $orig = Get-Content $backupFile | ConvertFrom-Json
+                $restore = @{}
+                foreach ($s in $orig) { $restore[$s.Name] = $s.Value }
+                Set-AzWebApp -ResourceGroupName $app.ResourceGroup -Name $app.Name -AppSettings $restore | Out-Null
+                $null = $SubResult.Errors.Add("Fix failed and restored: $($app.Name)")
             }
         }
     }
@@ -194,65 +211,76 @@ for ($s = 0; $s -lt $AllSubs.Count; $s++) {
     $null = $AllResults.Add($SubResult)
 }
 
-# STEP 4 - SUMMARY
+# SUMMARY
 Write-Line
-Write-Host "  FINAL SUMMARY - ALL SUBSCRIPTIONS" -ForegroundColor White
+Write-Host "  FINAL SUMMARY" -ForegroundColor White
 Write-Line
 
-$GrandFound = 0; $GrandFixed = 0; $GrandErrors = 0
-foreach ($R in $AllResults) {
-    $GrandFound  += $R.Found.Count
-    $GrandFixed  += $R.Fixed.Count
-    $GrandErrors += $R.Errors.Count
+$grandFound = 0; $grandFixed = 0; $grandErrors = 0
+foreach ($r in $AllResults) {
+    $grandFound  += $r.Found.Count
+    $grandFixed  += $r.Fixed.Count
+    $grandErrors += $r.Errors.Count
 }
-$Duration = [math]::Round(((Get-Date) - $StartTime).TotalSeconds)
+$duration = [math]::Round(((Get-Date) - $StartTime).TotalSeconds)
 
+Write-Log "Mode                  : $Mode"
 Write-Log "Subscriptions Scanned : $($AllResults.Count)"
-Write-Log "Total Resources Found : $GrandFound"
-Write-Log "Total Resources Fixed : $GrandFixed" "SUCCESS"
-Write-Log "Errors                : $GrandErrors"
-Write-Log "Duration              : $Duration seconds"
+Write-Log "Total Resources Found : $grandFound"
+Write-Log "Total Resources Fixed : $grandFixed" "SUCCESS"
+Write-Log "Errors                : $grandErrors"
+Write-Log "Duration              : $duration seconds"
 
-foreach ($R in $AllResults) {
-    $St = if ($R.Found.Count -eq 0) { "CLEAN" } elseif ($R.Fixed.Count -ge $R.Found.Count) { "ALL FIXED" } else { "REVIEW" }
-    Write-Log "  $($R.SubscriptionName) | Found=$($R.Found.Count) Fixed=$($R.Fixed.Count) | $St"
+foreach ($r in $AllResults) {
+    $st = if ($r.Found.Count -eq 0) { "CLEAN" } elseif ($r.Fixed.Count -ge $r.Found.Count) { "ALL FIXED" } else { "NEEDS FIX" }
+    Write-Log "  $($r.SubscriptionName) | Found=$($r.Found.Count) Fixed=$($r.Fixed.Count) | $st"
 }
 
-# STEP 5 - HTML REPORT
-$ReportPath = Join-Path $OutputPath "PYX-SpeechAPI-Fix-Report-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+if ($Mode -eq "REPORT" -and $grandFound -gt 0) {
+    Write-Host ""
+    Write-Log "NEXT: Run -Mode TEST on sandbox, then -Mode FIXALL" "WARN"
+}
+if ($Mode -eq "TEST") {
+    Write-Host ""
+    Write-Log "TEST DONE - Run -Mode FIXALL to fix all subscriptions" "SUCCESS"
+}
 
-$SubSections = ""
-foreach ($R in $AllResults) {
-    $HdrColor = if ($R.Found.Count -eq 0) { "#065f46" } elseif ($R.Fixed.Count -ge $R.Found.Count) { "#065f46" } else { "#991b1b" }
-    $StLabel  = if ($R.Found.Count -eq 0) { "CLEAN" } elseif ($R.Fixed.Count -ge $R.Found.Count) { "ALL FIXED" } else { "NEEDS REVIEW" }
-    $Rows = ""
-    if ($R.Found.Count -eq 0) {
-        $Rows = "<tr><td colspan='6' style='text-align:center;color:#6b7280;padding:14px'>No Speech API v3.0 resources found in this subscription</td></tr>"
+# HTML REPORT
+$reportPath = Join-Path $OutputPath "PYX-SpeechAPI-$Mode-Report-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+
+$subSections = ""
+foreach ($r in $AllResults) {
+    $hdrColor = if ($r.Found.Count -eq 0) { "#065f46" } elseif ($r.Fixed.Count -ge $r.Found.Count) { "#065f46" } else { "#991b1b" }
+    $stLabel  = if ($r.Found.Count -eq 0) { "CLEAN" } elseif ($r.Fixed.Count -ge $r.Found.Count) { "ALL FIXED" } else { "NEEDS FIX" }
+    $rows = ""
+    if ($r.Found.Count -eq 0) {
+        $rows = "<tr><td colspan='6' style='text-align:center;color:#6b7280;padding:14px'>No Speech API v3.0 resources found in this subscription</td></tr>"
     } else {
-        foreach ($f in $R.Found) {
-            $SBg = if ($f.Fixed) { "#d1fae5" } else { "#fee2e2" }
-            $SClr = if ($f.Fixed) { "#065f46" } else { "#991b1b" }
-            $STxt = if ($f.Fixed) { "FIXED" } else { "PENDING" }
-            $Rows += "<tr><td>$($f.Type)</td><td>$($f.Name)</td><td>$($f.ResourceGroup)</td><td style='font-family:Courier New;font-size:11px'>$($f.OldValue)</td><td style='font-family:Courier New;font-size:11px;color:#065f46'>$($f.NewValue)</td><td style='background:$SBg;color:$SClr;font-weight:bold;text-align:center'>$STxt</td></tr>"
+        foreach ($f in $r.Found) {
+            $sBg  = if ($f.Fixed) { "#d1fae5" } elseif ($Mode -eq "REPORT") { "#fef3c7" } else { "#fee2e2" }
+            $sClr = if ($f.Fixed) { "#065f46" } elseif ($Mode -eq "REPORT") { "#92400e" } else { "#991b1b" }
+            $sTxt = if ($f.Fixed) { "FIXED" } elseif ($Mode -eq "REPORT") { "NEEDS FIX" } else { "PENDING" }
+            $rows += "<tr><td>$($f.Type)</td><td>$($f.Name)</td><td>$($f.ResourceGroup)</td><td style='font-family:Courier New;font-size:11px'>$($f.OldValue)</td><td style='font-family:Courier New;font-size:11px;color:#065f46'>$($f.NewValue)</td><td style='background:$sBg;color:$sClr;font-weight:bold;text-align:center'>$sTxt</td></tr>"
         }
     }
-    $ErrHtml = ""
-    if ($R.Errors.Count -gt 0) {
-        $EList = ""
-        foreach ($E in $R.Errors) { $EList += "<li>$E</li>" }
-        $ErrHtml = "<div style='background:#fee2e2;padding:10px 16px;font-size:12px;color:#991b1b'><strong>Errors:</strong><ul>$EList</ul></div>"
+    $errHtml = ""
+    if ($r.Errors.Count -gt 0) {
+        $eList = ""
+        foreach ($e in $r.Errors) { $eList += "<li>$e</li>" }
+        $errHtml = "<div style='background:#fee2e2;padding:10px 16px;font-size:12px;color:#991b1b'><strong>Errors (auto-restored from backup):</strong><ul>$eList</ul></div>"
     }
-    $SubSections += "<div style='margin-bottom:28px'><div style='background:$HdrColor;color:#fff;padding:12px 18px;border-radius:6px 6px 0 0;font-weight:bold;font-size:13px'>$($R.SubscriptionName) | $($R.SubscriptionId) | Found: $($R.Found.Count) | Fixed: $($R.Fixed.Count) | $StLabel</div><table style='width:100%;border-collapse:collapse;font-size:12px'><tr style='background:#1e3a8a;color:#fff'><th style='padding:8px 10px;text-align:left'>Type</th><th style='padding:8px 10px;text-align:left'>Resource</th><th style='padding:8px 10px;text-align:left'>Resource Group</th><th style='padding:8px 10px;text-align:left'>Old Value</th><th style='padding:8px 10px;text-align:left'>New Value</th><th style='padding:8px 10px;text-align:left'>Status</th></tr>$Rows</table>$ErrHtml</div>"
+    $subSections += "<div style='margin-bottom:28px'><div style='background:$hdrColor;color:#fff;padding:12px 18px;border-radius:6px 6px 0 0;font-weight:bold;font-size:13px'>$($r.SubscriptionName) | $($r.SubscriptionId) | Found: $($r.Found.Count) | Fixed: $($r.Fixed.Count) | $stLabel</div><table style='width:100%;border-collapse:collapse;font-size:12px'><tr style='background:#1e3a8a;color:#fff'><th style='padding:8px 10px;text-align:left'>Type</th><th style='padding:8px 10px;text-align:left'>Resource</th><th style='padding:8px 10px;text-align:left'>Resource Group</th><th style='padding:8px 10px;text-align:left'>Old Value</th><th style='padding:8px 10px;text-align:left'>New Value</th><th style='padding:8px 10px;text-align:left'>Status</th></tr>$rows</table>$errHtml</div>"
 }
 
-$Html  = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>PYX Speech API Fix</title>"
-$Html += "<style>body{font-family:Arial,sans-serif;margin:0;background:#f8fafc;color:#1e293b}.hdr{background:#991b1b;color:#fff;padding:26px 34px}.hdr h1{margin:0;font-size:22px}.hdr p{margin:6px 0 0;opacity:.85;font-size:12px}.alert{background:#fef3c7;border-left:6px solid #d97706;padding:13px 34px;font-size:13px;color:#92400e;font-weight:bold}.kpi{display:flex;gap:14px;padding:18px 34px;background:#fff;border-bottom:1px solid #e2e8f0}.kpi-box{flex:1;border-radius:8px;padding:14px;text-align:center}.val{font-size:28px;font-weight:700}.lbl{font-size:12px;margin-top:4px}.red{background:#fee2e2}.red .val{color:#991b1b}.green{background:#d1fae5}.green .val{color:#065f46}.blue{background:#dbeafe}.blue .val{color:#1e40af}.gray{background:#f1f5f9}.gray .val{color:#374151}.sec{padding:22px 34px}.ftr{padding:14px 34px;text-align:center;color:#94a3b8;font-size:11px;border-top:1px solid #e2e8f0}td{padding:7px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}tr:hover{background:#f1f5f9}</style></head><body>"
-$Html += "<div class='hdr'><h1>PYX Health - Speech API v3.0 Fix Report</h1><p>Generated: $(Get-Date -Format 'MMMM dd, yyyy HH:mm:ss') | Subscriptions: $($AllResults.Count) | Author: Syed Rizvi</p></div>"
-$Html += "<div class='alert'>URGENT: Speech-to-text REST API v3.0 retires March 31 2026. All affected resources updated to $NewVersion.</div>"
-$Html += "<div class='kpi'><div class='kpi-box gray'><div class='val'>$($AllResults.Count)</div><div class='lbl'>Subscriptions Scanned</div></div><div class='kpi-box red'><div class='val'>$GrandFound</div><div class='lbl'>Resources Found</div></div><div class='kpi-box green'><div class='val'>$GrandFixed</div><div class='lbl'>Resources Fixed</div></div><div class='kpi-box blue'><div class='val'>$Duration sec</div><div class='lbl'>Duration</div></div></div>"
-$Html += "<div class='sec'><h2 style='color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:6px;font-size:15px'>Results by Subscription</h2>$SubSections</div>"
-$Html += "<div class='ftr'>PYX Health | IT Infrastructure | Syed Rizvi | March 2026 | CONFIDENTIAL</div></body></html>"
+$html  = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>PYX Speech API $Mode Report</title>"
+$html += "<style>body{font-family:Arial,sans-serif;margin:0;background:#f8fafc;color:#1e293b}.hdr{background:#991b1b;color:#fff;padding:26px 34px}.hdr h1{margin:0;font-size:22px}.hdr p{margin:6px 0 0;opacity:.85;font-size:12px}.alert{background:#fef3c7;border-left:6px solid #d97706;padding:13px 34px;font-size:13px;color:#92400e;font-weight:bold}.steps{background:#dbeafe;border-left:6px solid #1e40af;padding:13px 34px;font-size:13px;color:#1e40af}.kpi{display:flex;gap:14px;padding:18px 34px;background:#fff;border-bottom:1px solid #e2e8f0}.kpi-box{flex:1;border-radius:8px;padding:14px;text-align:center}.val{font-size:28px;font-weight:700}.lbl{font-size:12px;margin-top:4px}.red{background:#fee2e2}.red .val{color:#991b1b}.green{background:#d1fae5}.green .val{color:#065f46}.blue{background:#dbeafe}.blue .val{color:#1e40af}.gray{background:#f1f5f9}.gray .val{color:#374151}.sec{padding:22px 34px}.ftr{padding:14px 34px;text-align:center;color:#94a3b8;font-size:11px;border-top:1px solid #e2e8f0}td{padding:7px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}tr:hover{background:#f1f5f9}</style></head><body>"
+$html += "<div class='hdr'><h1>PYX Health - Speech API v3.0 $Mode Report - All 13 Subscriptions</h1><p>Generated: $(Get-Date -Format 'MMMM dd, yyyy HH:mm:ss') | Mode: $Mode | Scanned: $($AllResults.Count) | Author: Syed Rizvi</p></div>"
+$html += "<div class='alert'>URGENT: Speech-to-text REST API v3.0 retires March 31 2026 - TOMORROW. New version: $NewVersion</div>"
+if ($Mode -eq "REPORT") { $html += "<div class='steps'>NEXT STEPS: (1) Send this report to IT Director (2) Run -Mode TEST to fix sandbox first (3) Run -Mode FIXALL tonight to fix all</div>" }
+$html += "<div class='kpi'><div class='kpi-box gray'><div class='val'>$($AllResults.Count)</div><div class='lbl'>Subscriptions Scanned</div></div><div class='kpi-box red'><div class='val'>$grandFound</div><div class='lbl'>Resources Found</div></div><div class='kpi-box green'><div class='val'>$grandFixed</div><div class='lbl'>Resources Fixed</div></div><div class='kpi-box blue'><div class='val'>$duration sec</div><div class='lbl'>Duration</div></div></div>"
+$html += "<div class='sec'><h2 style='color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:6px;font-size:15px'>Results by Subscription</h2>$subSections</div>"
+$html += "<div class='ftr'>PYX Health | IT Infrastructure | Syed Rizvi | March 2026 | CONFIDENTIAL - Internal Use Only</div></body></html>"
 
-$Html | Out-File -FilePath $ReportPath -Encoding UTF8
-Write-Log "Report saved: $ReportPath" "SUCCESS"
+$html | Out-File -FilePath $reportPath -Encoding UTF8
+Write-Log "HTML Report saved: $reportPath" "SUCCESS"
 Write-Log "ALL DONE" "SUCCESS"
