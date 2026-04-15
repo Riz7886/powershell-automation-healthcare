@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PYX DevOps Permissions Setup Guide</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;900&family=Share+Tech+Mono&display=swap');
+
+:root {
+    --bg: #050810;
+    --panel: #0b1220;
+    --panel2: #0e1628;
+    --border: #1a2540;
+    --border-lite: #2a3a5f;
+    --pyx-blue: #00bfff;
+    --pyx-cyan: #64ffda;
+    --green: #00ff88;
+    --yellow: #ffd600;
+    --red: #ff4455;
+    --orange: #ff9800;
+    --purple: #c084fc;
+    --white: #e8f0fe;
+    --dim: #4a6080;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'Barlow', sans-serif;
+    padding: 24px;
+    font-size: 15px;
+    line-height: 1.65;
+    max-width: 1280px;
+    margin: 0 auto;
+}
+
+/* HEADER */
+.header {
+    background: linear-gradient(135deg, #0a1628 0%, #0d2040 50%, #0a1830 100%);
+    border: 2px solid var(--pyx-blue);
+    border-radius: 14px;
+    padding: 36px 28px;
+    margin-bottom: 28px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--pyx-blue), var(--pyx-cyan), var(--green), var(--pyx-blue));
+    animation: glow 4s linear infinite;
+}
+@keyframes glow { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
+.header h1 {
+    font-size: 1.9em;
+    font-weight: 900;
+    color: var(--pyx-blue);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.header p {
+    color: var(--dim);
+    font-size: 0.88em;
+    font-family: 'Share Tech Mono', monospace;
+}
+.pyx-badge {
+    display: inline-block;
+    background: rgba(0, 191, 255, 0.15);
+    color: var(--pyx-blue);
+    border: 1px solid var(--pyx-blue);
+    padding: 5px 20px;
+    border-radius: 20px;
+    font-size: 0.75em;
+    font-weight: 700;
+    margin-top: 12px;
+    letter-spacing: 2px;
+}
+
+/* FACTS GRID */
+.facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.fact-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    transition: border-color 0.2s;
+}
+.fact-card:hover { border-color: var(--pyx-blue); }
+.fact-label {
+    font-size: 0.7em;
+    color: var(--dim);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 1.5px;
+    margin-bottom: 5px;
+}
+.fact-value {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--pyx-cyan);
+    font-size: 0.95em;
+    word-break: break-all;
+}
+
+/* SECTIONS */
+.section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 22px;
+    overflow: hidden;
+}
+.sec-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0, 191, 255, 0.03);
+}
+.step-num {
+    background: var(--pyx-blue);
+    color: #000;
+    padding: 6px 18px;
+    border-radius: 20px;
+    font-size: 0.82em;
+    font-weight: 900;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+.step-num.green { background: var(--green); }
+.step-num.yellow { background: var(--yellow); }
+.step-num.red { background: var(--red); color: #fff; }
+.sec-title {
+    font-weight: 900;
+    font-size: 1.08em;
+    flex: 1;
+    color: var(--white);
+}
+.sec-body { padding: 22px 26px; }
+.sec-body p { margin-bottom: 10px; }
+
+/* CODE BLOCKS */
+.cb {
+    background: #03060d;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 18px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.82em;
+    line-height: 1.75;
+    position: relative;
+    margin: 12px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    color: #b8d4f0;
+}
+.cb.big { max-height: 540px; overflow-y: auto; }
+.btn-copy {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 191, 255, 0.12);
+    border: 1px solid rgba(0, 191, 255, 0.4);
+    color: var(--pyx-blue);
+    font-family: 'Barlow', sans-serif;
+    font-size: 0.76em;
+    font-weight: 700;
+    padding: 5px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 1px;
+    z-index: 5;
+}
+.btn-copy:hover { background: rgba(0, 191, 255, 0.25); }
+.btn-copy.ok {
+    background: rgba(0, 255, 136, 0.3);
+    border-color: var(--green);
+    color: var(--green);
+}
+
+/* ALERTS */
+.al {
+    font-size: 0.9em;
+    padding: 13px 18px;
+    border-radius: 5px;
+    margin: 12px 0;
+    border-left: 4px solid;
+    line-height: 1.6;
+}
+.al.y { color: var(--yellow); background: rgba(255, 214, 0, 0.06); border-color: var(--yellow); }
+.al.g { color: var(--green); background: rgba(0, 255, 136, 0.06); border-color: var(--green); }
+.al.r { color: var(--red); background: rgba(255, 68, 85, 0.06); border-color: var(--red); }
+.al.b { color: var(--pyx-blue); background: rgba(0, 191, 255, 0.06); border-color: var(--pyx-blue); }
+.al.o { color: var(--orange); background: rgba(255, 152, 0, 0.06); border-color: var(--orange); }
+
+/* TABLES */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 0.9em;
+}
+th {
+    background: #0a1a30;
+    color: var(--pyx-cyan);
+    text-align: left;
+    padding: 11px 14px;
+    font-size: 0.85em;
+    letter-spacing: 1px;
+    border-bottom: 2px solid var(--border-lite);
+}
+td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    color: #cdd8e6;
+    vertical-align: top;
+}
+tr:nth-child(even) td { background: rgba(13, 18, 32, 0.5); }
+code {
+    background: #0a1525;
+    color: var(--pyx-cyan);
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.92em;
+}
+
+/* FILL-IN */
+.fill-card {
+    background: #080d18;
+    border: 1px solid rgba(255, 214, 0, 0.25);
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin: 12px 0;
+}
+.fill-card h4 {
+    color: var(--yellow);
+    font-size: 0.95em;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+}
+.fill-row {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 214, 0, 0.08);
+}
+.fill-row:last-child { border-bottom: none; }
+.fill-label {
+    font-size: 0.82em;
+    color: var(--dim);
+    font-family: 'Share Tech Mono', monospace;
+    min-width: 210px;
+    letter-spacing: 0.3px;
+}
+.fill-value {
+    flex: 1;
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--yellow);
+    padding: 6px 14px;
+    background: #000;
+    border: 1px dashed rgba(255, 214, 0, 0.35);
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+.fill-value.fixed {
+    color: var(--pyx-cyan);
+    border-color: rgba(100, 255, 218, 0.35);
+    border-style: solid;
+}
+
+/* CHECKLIST */
+.check-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+}
+.chk {
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--pyx-blue);
+    border-radius: 4px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.chk.done { background: var(--pyx-blue); }
+.chk.done::after {
+    content: '\2713';
+    color: #000;
+    font-size: 14px;
+    font-weight: 900;
+}
+.chk-label {
+    color: #bbccdd;
+    font-size: 0.9em;
+    line-height: 1.55;
+}
+
+/* SECTION LABELS */
+.sl {
+    font-size: 0.95em;
+    font-weight: 700;
+    color: var(--yellow);
+    margin: 18px 0 8px;
+    letter-spacing: 0.5px;
+}
+.sl.b { color: var(--pyx-blue); }
+.sl.g { color: var(--green); }
+
+hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+.footer {
+    text-align: center;
+    padding: 28px 16px;
+    color: var(--dim);
+    font-size: 0.78em;
+    border-top: 1px solid var(--border);
+    margin-top: 18px;
+    font-family: 'Share Tech Mono';
+    letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>PYX DevOps &mdash; Permissions Setup</h1>
+    <p>Grant pipeline access without guessing // PowerShell script + playbook</p>
+    <span class="pyx-badge">PYX.DRIVERSHEALTH // AZURE DEVOPS</span>
+    <div style="margin-top:14px;font-size:0.78em;color:var(--pyx-cyan);font-family:'Share Tech Mono',monospace;letter-spacing:1px;">PREPARED BY: SYED</div>
+</div>
+
+<!-- FACTS -->
+<div class="facts">
+    <div class="fact-card">
+        <div class="fact-label">ORGANIZATION</div>
+        <div class="fact-value">techmodgroup</div>
+    </div>
+    <div class="fact-card">
+        <div class="fact-label">PROJECT</div>
+        <div class="fact-value">Pyx.DriversHealth</div>
+    </div>
+    <div class="fact-card">
+        <div class="fact-label">TARGET PIPELINE</div>
+        <div class="fact-value">hi pyx API &mdash; ID 83</div>
+    </div>
+    <div class="fact-card">
+        <div class="fact-label">ORG URL</div>
+        <div class="fact-value">dev.azure.com/techmodgroup</div>
+    </div>
+</div>
+
+<div class="al b">
+    <strong>Overview.</strong> Two valid approaches to grant pipeline permissions in Azure DevOps: <strong>(A)</strong> grant a user direct access on a single pipeline, or <strong>(B)</strong> create a security group, add members, and grant the group access. This playbook gives you one script that does both. Use <strong>Scenario A</strong> for a one-off, <strong>Scenario B</strong> for anything recurring.
+</div>
+
+<!-- STEP 1 -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num">STEP 1</span>
+        <div class="sec-title">One-time prerequisites &mdash; install &amp; log in</div>
+    </div>
+    <div class="sec-body">
+        <p>Run each command in an elevated PowerShell window. Skip any that are already installed.</p>
+
+        <div class="sl">1a &mdash; Install Azure CLI</div>
+        <div class="cb"><button class="btn-copy" onclick="cp(this)">COPY</button>winget install Microsoft.AzureCLI</div>
+        <div class="al y">If <code>winget</code> isn't available, download the MSI from <code>https://aka.ms/installazcli</code>.</div>
+
+        <div class="sl">1b &mdash; Add the azure-devops extension</div>
+        <div class="cb"><button class="btn-copy" onclick="cp(this)">COPY</button>az extension add --name azure-devops</div>
+
+        <div class="sl">1c &mdash; Log in with your PYX account</div>
+        <div class="cb"><button class="btn-copy" onclick="cp(this)">COPY</button>az login</div>
+        <div class="al y">A browser opens. Sign in with the account that has access to <code>Pyx.DriversHealth</code>. Close the tab when it says "You have logged in".</div>
+
+        <div class="sl">1d &mdash; Verify project access</div>
+        <div class="cb"><button class="btn-copy" onclick="cp(this)">COPY</button>az devops project show --org https://dev.azure.com/techmodgroup --project Pyx.DriversHealth --query "{name:name,id:id}"</div>
+        <div class="al g"><strong>Good:</strong> JSON blob with <code>name</code> and <code>id</code>. You're ready for Step 2.</div>
+        <div class="al r"><strong>Bad:</strong> "TF400813" or "not authorized" &mdash; your account doesn't have Reader on the project yet. Ask the DevOps admin to grant Reader, then retry.</div>
+    </div>
+</div>
+
+<!-- STEP 2 -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num">STEP 2</span>
+        <div class="sec-title">Save the permissions script</div>
+    </div>
+    <div class="sec-body">
+        <p>Copy the full PowerShell below and save to:</p>
+        <div class="cb" style="padding: 10px 16px;"><code>C:\Users\&lt;YOU&gt;\Downloads\pyx-devops-perms.ps1</code></div>
+        <div class="al o">In Notepad: <strong>File &rarr; Save As</strong> &rarr; change "Save as type" to <strong>All Files</strong> &rarr; filename <code>pyx-devops-perms.ps1</code> &rarr; Save.</div>
+
+        <pre class="cb big" id="ps-script-display"><button class="btn-copy" onclick="cpScript(this)">COPY SCRIPT</button></pre>
+    </div>
+</div>
+
+<!-- STEP 3 -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num">STEP 3</span>
+        <div class="sec-title">Run the script</div>
+    </div>
+    <div class="sec-body">
+        <p>Open a new PowerShell window as Administrator and run:</p>
+        <div class="cb"><button class="btn-copy" onclick="cp(this)">COPY</button>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+cd $env:USERPROFILE\Downloads
+.\pyx-devops-perms.ps1</div>
+        <div class="al b">First line allows the script to run in this PowerShell session only &mdash; no system-wide change. Safe.</div>
+        <p>A menu appears. Keep the window open &mdash; every action loops back to the menu so you can do multiple things in one session.</p>
+    </div>
+</div>
+
+<!-- MENU REFERENCE -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num green">MENU</span>
+        <div class="sec-title">What each option does</div>
+    </div>
+    <div class="sec-body">
+        <table>
+            <thead>
+                <tr><th style="width:80px;">Option</th><th>Action</th><th>When to use</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>1</strong></td><td>List all pipelines</td><td>Start here to grab the pipeline ID (e.g. <code>83</code> for "hi pyx API")</td></tr>
+                <tr><td><strong>2</strong></td><td>List security groups</td><td>Grab a group's descriptor if you plan to reuse an existing group</td></tr>
+                <tr><td><strong>3</strong></td><td>Grant DIRECT perms on a pipeline</td><td>One-off: "give a user Contributor on pipeline 83"</td></tr>
+                <tr><td><strong>4</strong></td><td>Create group + add users + grant group access</td><td>Recurring: the whole Pyx API team needs access &mdash; do this once</td></tr>
+                <tr><td><strong>5</strong></td><td>Show current permissions on a pipeline</td><td>Audit who has what today</td></tr>
+                <tr><td><strong>6</strong></td><td>Exit</td><td>Done</td></tr>
+            </tbody>
+        </table>
+
+        <div class="sl b">Permission presets (the script asks you to pick one)</div>
+        <table>
+            <thead><tr><th>Preset</th><th>What they can do</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Reader</strong></td><td>View the pipeline and past builds. Cannot run or edit.</td></tr>
+                <tr><td><strong>Contributor</strong></td><td>Reader + <em>queue new builds</em>. <strong>Most common choice.</strong></td></tr>
+                <tr><td><strong>Editor</strong></td><td>Contributor + edit the pipeline definition. For pipeline owners.</td></tr>
+                <tr><td><strong>Administrator</strong></td><td>Full control incl. delete + manage perms. Project admins only.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- SCENARIO A -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num yellow">SCENARIO A</span>
+        <div class="sec-title">Grant a user Contributor on "hi pyx API" (ID 83) &mdash; direct, fast</div>
+    </div>
+    <div class="sec-body">
+        <p>Quick one-off access. No group created. Run menu option <strong>3</strong>.</p>
+
+        <div class="fill-card">
+            <h4>Fill in when the script prompts:</h4>
+            <div class="fill-row"><div class="fill-label">Menu choice</div><div class="fill-value fixed">3</div></div>
+            <div class="fill-row"><div class="fill-label">Pipeline ID</div><div class="fill-value fixed">83</div></div>
+            <div class="fill-row"><div class="fill-label">Subject (user email)</div><div class="fill-value">&lt;user-email&gt;@pyxhealth.com</div></div>
+            <div class="fill-row"><div class="fill-label">Preset</div><div class="fill-value fixed">Contributor</div></div>
+            <div class="fill-row"><div class="fill-label">Apply? [y/N]</div><div class="fill-value fixed">y</div></div>
+        </div>
+
+        <div class="al g"><strong>Result:</strong> The user now has Contributor access &mdash; they can view and queue builds on "hi pyx API". Verify with menu option 5 &rarr; pipeline 83.</div>
+        <div class="al y"><strong>Replace the placeholder email</strong> with the target user's actual PYX address before running.</div>
+    </div>
+</div>
+
+<!-- SCENARIO B -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num yellow">SCENARIO B</span>
+        <div class="sec-title">Create "Pyx API Contributors" group &mdash; the proper setup</div>
+    </div>
+    <div class="sec-body">
+        <p>Create a group once, add members as the team changes, and the pipeline grant stays put forever. Run menu option <strong>4</strong>.</p>
+
+        <div class="fill-card">
+            <h4>Fill in when the script prompts:</h4>
+            <div class="fill-row"><div class="fill-label">Menu choice</div><div class="fill-value fixed">4</div></div>
+            <div class="fill-row"><div class="fill-label">New group name</div><div class="fill-value">Pyx API Contributors</div></div>
+            <div class="fill-row"><div class="fill-label">Description</div><div class="fill-value">Contributor access to hi pyx API pipeline</div></div>
+            <div class="fill-row"><div class="fill-label">Comma-separated emails</div><div class="fill-value">user1@pyxhealth.com, user2@pyxhealth.com</div></div>
+            <div class="fill-row"><div class="fill-label">Pipeline ID</div><div class="fill-value fixed">83</div></div>
+            <div class="fill-row"><div class="fill-label">Preset</div><div class="fill-value fixed">Contributor</div></div>
+            <div class="fill-row"><div class="fill-label">Apply? [y/N]</div><div class="fill-value fixed">y</div></div>
+        </div>
+
+        <div class="al g"><strong>Result:</strong> New project-scoped group <code>Pyx API Contributors</code> exists with the listed users as members. The group has Contributor on pipeline 83. Next time someone joins the team, re-run the script &rarr; option 2 to find the group &rarr; use the <code>az devops security group membership add</code> snippet below. No new pipeline grant needed.</div>
+
+        <div class="sl b">Quick "add a member later" one-liner (outside the script)</div>
+        <div class="cb"><button class="btn-copy" onclick="cp(this)">COPY</button>az devops security group membership add --group-id &lt;GROUP_DESCRIPTOR&gt; --member-id newperson@pyxhealth.com --org https://dev.azure.com/techmodgroup</div>
+        <div class="al y">Get <code>&lt;GROUP_DESCRIPTOR&gt;</code> from menu option 2 &mdash; it's the long <code>vssgp.Uy0xLTktMTU1...</code> string.</div>
+    </div>
+</div>
+
+<!-- TROUBLESHOOTING -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num red">TROUBLESHOOT</span>
+        <div class="sec-title">When things go sideways</div>
+    </div>
+    <div class="sec-body">
+        <table>
+            <thead><tr><th>Error</th><th>Fix</th></tr></thead>
+            <tbody>
+                <tr><td><code>'az' is not recognized</code></td><td>Azure CLI not installed or PATH not refreshed. Close PowerShell, reopen as Admin, try again. If still failing, reinstall via <code>winget install Microsoft.AzureCLI</code>.</td></tr>
+                <tr><td><code>az login</code> opens browser but never completes</td><td>Try device-code flow: <code>az login --use-device-code</code>. Paste the shown code into the URL it gives you.</td></tr>
+                <tr><td><code>TF400813: Not authorized</code></td><td>Your account doesn't have access to the project. Ask the DevOps admin to add you as Reader on <code>Pyx.DriversHealth</code>.</td></tr>
+                <tr><td><code>The subject you provided is not valid</code></td><td>Azure DevOps can't find the user. (a) Verify the email spelling, (b) ask the user to log into the org at least once so they exist in the AAD directory, (c) try the display name instead.</td></tr>
+                <tr><td><code>Script can't be loaded because running scripts is disabled</code></td><td>Run once in the same window: <code>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass</code></td></tr>
+                <tr><td>Menu option 1 shows no pipelines</td><td>Wrong project context. Re-run <code>az devops configure --defaults organization=https://dev.azure.com/techmodgroup project=Pyx.DriversHealth</code> and try again.</td></tr>
+                <tr><td>Permission applied but user still can't see pipeline</td><td>AAD sync delay &mdash; takes up to 5 minutes. Ask user to fully sign out of Azure DevOps and sign back in.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- CHECKLIST -->
+<div class="section">
+    <div class="sec-head">
+        <span class="step-num green">CHECKLIST</span>
+        <div class="sec-title">Sign-off checklist</div>
+    </div>
+    <div class="sec-body">
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Azure CLI installed &mdash; <code>az --version</code> works</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">azure-devops extension added</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Logged in via <code>az login</code> with PYX account</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label"><code>az devops project show</code> returns JSON &mdash; I have Reader on the project</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Script saved as <code>pyx-devops-perms.ps1</code> and launches without errors</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Menu option 1 shows <code>hi pyx API</code> pipeline with ID 83</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Decided approach: Scenario A (direct) or Scenario B (group)</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Permissions applied &mdash; script printed "Permission applied" in green</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Menu option 5 shows the new ACE on the pipeline</span></div>
+        <div class="check-item"><div class="chk" onclick="this.classList.toggle('done')"></div><span class="chk-label">Target user verified: they can see the pipeline under Pipelines &rarr; Builds in the Azure DevOps UI</span></div>
+    </div>
+</div>
+
+<div class="footer">
+    PYX.DRIVERSHEALTH &mdash; DEVOPS PERMISSIONS PLAYBOOK &mdash; PREPARED BY SYED &mdash; techmodgroup // dev.azure.com
+</div>
+
+<!-- PowerShell script payload - stored as text, not executed -->
+<script type="text/plain" id="ps-script-data">
+# ============================================================
+# PYX DEVOPS PERMISSIONS MANAGER
+# Interactive script for pipeline + group permissions
+# Org: techmodgroup | Project: Pyx.DriversHealth
+# ============================================================
+# Prereqs:
+#   1. Azure CLI: https://aka.ms/installazcli
+#   2. azure-devops extension (auto-installed below if missing)
+#   3. az login (auto-prompted below)
+# ============================================================
+
+$ErrorActionPreference = 'Stop'
+
+# --- Config ---
+$Org     = "https://dev.azure.com/techmodgroup"
+$Project = "Pyx.DriversHealth"
+
+# Azure DevOps "Build" security namespace - same GUID everywhere
+$BuildNamespace = "33344D9C-FC72-4D6F-ABA2-FA30C578BBE7"
+
+# Permission presets for pipelines (bit values from Azure DevOps Build namespace)
+$PresetPermissions = @{
+    "Reader"        = 17     # ViewBuildDefinition(1) + ViewBuilds(16)
+    "Contributor"   = 145    # Reader + QueueBuilds(128)
+    "Editor"        = 147    # Contributor + EditBuildDefinition(2)
+    "Administrator" = 16535  # Full access including delete + manage
+}
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+function Test-Prereqs {
+    Write-Host "Checking prerequisites..." -ForegroundColor Yellow
+
+    if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+        throw "Azure CLI not installed. Get it: https://aka.ms/installazcli"
+    }
+
+    $ext = az extension list --query "[?name=='azure-devops']" 2>$null | ConvertFrom-Json
+    if (-not $ext) {
+        Write-Host "  Installing azure-devops extension..." -ForegroundColor Yellow
+        az extension add --name azure-devops --only-show-errors | Out-Null
+    }
+
+    $account = az account show --query user.name -o tsv 2>$null
+    if (-not $account) {
+        Write-Host "  Not logged in. Running az login..." -ForegroundColor Yellow
+        az login | Out-Null
+        $account = az account show --query user.name -o tsv
+    }
+
+    az devops configure --defaults organization=$Org project=$Project 2>&1 | Out-Null
+
+    Write-Host "  Logged in as: $account" -ForegroundColor Green
+    Write-Host "  Target org:   $Org" -ForegroundColor Green
+    Write-Host "  Project:      $Project" -ForegroundColor Green
+}
+
+function Get-ProjectId {
+    return (az devops project show --project $Project --org $Org --query id -o tsv)
+}
+
+function Show-Menu {
+    Write-Host "`n============================================================" -ForegroundColor Cyan
+    Write-Host "  PYX DEVOPS PERMISSIONS MANAGER" -ForegroundColor Cyan
+    Write-Host "  Org: techmodgroup  |  Project: Pyx.DriversHealth" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "  1. List all pipelines"
+    Write-Host "  2. List security groups in the project"
+    Write-Host "  3. Grant a user or group DIRECT permissions on a pipeline"
+    Write-Host "  4. Create a new security group, add users, grant it pipeline access"
+    Write-Host "  5. Show current permissions on a pipeline"
+    Write-Host "  6. Exit"
+    Write-Host "============================================================" -ForegroundColor Cyan
+    return (Read-Host "Choose [1-6]")
+}
+
+function List-Pipelines {
+    Write-Host "`nPipelines in ${Project}:" -ForegroundColor Cyan
+    az pipelines list --org $Org --project $Project `
+        --query "[].{ID:id, Name:name, Folder:path, Status:queueStatus}" -o table
+}
+
+function List-Groups {
+    Write-Host "`nProject-scoped security groups:" -ForegroundColor Cyan
+    $projectId = Get-ProjectId
+    az devops security group list --scope project --project-id $projectId --org $Org `
+        --query "graphGroups[].{Name:displayName, Principal:principalName, Descriptor:descriptor}" -o table
+}
+
+function Show-PipelinePermissions {
+    param([string]$PipelineId)
+    $projectId = Get-ProjectId
+    $token = "$projectId/$PipelineId"
+    Write-Host "`nCurrent ACL for pipeline ${PipelineId}:" -ForegroundColor Cyan
+    Write-Host "Token: $token" -ForegroundColor DarkGray
+    az devops security permission list --id $BuildNamespace --token $token --org $Org -o table
+}
+
+function Select-Preset {
+    Write-Host "`nPermission presets:" -ForegroundColor Cyan
+    Write-Host "  Reader        - view pipeline + builds (no run)"
+    Write-Host "  Contributor   - Reader + queue new builds"
+    Write-Host "  Editor        - Contributor + edit pipeline definition"
+    Write-Host "  Administrator - full control"
+    $p = Read-Host "Preset [Reader/Contributor/Editor/Administrator]"
+    if (-not $PresetPermissions.ContainsKey($p)) { throw "Invalid preset: $p" }
+    return $p
+}
+
+function Grant-PipelinePermission {
+    param(
+        [string]$PipelineId,
+        [string]$IdentitySubject,
+        [int]$AllowBit,
+        [string]$PresetName
+    )
+    $projectId = Get-ProjectId
+    $token = "$projectId/$PipelineId"
+
+    Write-Host "`n--- PREVIEW ---" -ForegroundColor Yellow
+    Write-Host "  Pipeline ID:  $PipelineId"
+    Write-Host "  Identity:     $IdentitySubject"
+    Write-Host "  Preset:       $PresetName (allow-bit $AllowBit)"
+    Write-Host "  Token:        $token"
+
+    $confirm = Read-Host "`nApply? [y/N]"
+    if ($confirm -notmatch '^[yY]$') {
+        Write-Host "  Cancelled" -ForegroundColor Red
+        return
+    }
+
+    az devops security permission update `
+        --id $BuildNamespace `
+        --subject $IdentitySubject `
+        --token $token `
+        --allow-bit $AllowBit `
+        --org $Org | Out-Null
+
+    Write-Host "  Permission applied" -ForegroundColor Green
+}
+
+# ============================================================
+# ACTIONS
+# ============================================================
+
+function Action-GrantDirect {
+    List-Pipelines
+    $pipelineId = Read-Host "`nPipeline ID to modify (e.g. 83 for 'hi pyx API')"
+
+    Write-Host "`nWho gets the permission?"
+    Write-Host "  - For a USER: enter their email"
+    Write-Host "  - For a GROUP: enter the group descriptor from option 2"
+    $subject = Read-Host "Subject"
+
+    $preset = Select-Preset
+
+    Grant-PipelinePermission `
+        -PipelineId $pipelineId `
+        -IdentitySubject $subject `
+        -AllowBit $PresetPermissions[$preset] `
+        -PresetName $preset
+}
+
+function Action-CreateGroupAndGrant {
+    $groupName   = Read-Host "New group name (e.g. 'Pyx API Contributors')"
+    $description = Read-Host "Description (optional, press Enter to skip)"
+
+    $projectId = Get-ProjectId
+
+    Write-Host "`nCreating group '$groupName'..." -ForegroundColor Yellow
+    $groupArgs = @(
+        "--name", $groupName,
+        "--scope", "project",
+        "--project-id", $projectId,
+        "--org", $Org
+    )
+    if ($description) { $groupArgs += @("--description", $description) }
+
+    $group = az devops security group create @groupArgs | ConvertFrom-Json
+    $groupDescriptor = $group.descriptor
+    Write-Host "  Created: $groupName" -ForegroundColor Green
+    Write-Host "  Descriptor: $groupDescriptor" -ForegroundColor DarkGray
+
+    $users = Read-Host "`nComma-separated user emails to add to the group (Enter to skip)"
+    if ($users) {
+        foreach ($email in $users -split ',') {
+            $email = $email.Trim()
+            if (-not $email) { continue }
+            Write-Host "  Adding $email..." -ForegroundColor Yellow
+            az devops security group membership add `
+                --group-id $groupDescriptor `
+                --member-id $email `
+                --org $Org | Out-Null
+        }
+        Write-Host "  Members added" -ForegroundColor Green
+    }
+
+    Write-Host "`nNow grant this group access to a pipeline." -ForegroundColor Cyan
+    List-Pipelines
+    $pipelineId = Read-Host "`nPipeline ID (or Enter to skip)"
+    if (-not $pipelineId) {
+        Write-Host "  Skipped. Run option 3 later with the group descriptor above as the subject." -ForegroundColor Yellow
+        return
+    }
+
+    $preset = Select-Preset
+    Grant-PipelinePermission `
+        -PipelineId $pipelineId `
+        -IdentitySubject $groupDescriptor `
+        -AllowBit $PresetPermissions[$preset] `
+        -PresetName $preset
+}
+
+# ============================================================
+# MAIN LOOP
+# ============================================================
+
+Test-Prereqs
+
+while ($true) {
+    $choice = Show-Menu
+    try {
+        switch ($choice) {
+            "1" { List-Pipelines }
+            "2" { List-Groups }
+            "3" { Action-GrantDirect }
+            "4" { Action-CreateGroupAndGrant }
+            "5" {
+                List-Pipelines
+                $p = Read-Host "`nPipeline ID"
+                Show-PipelinePermissions -PipelineId $p
+            }
+            "6" { Write-Host "`nDone." -ForegroundColor Cyan; exit 0 }
+            default { Write-Host "Invalid choice" -ForegroundColor Red }
+        }
+    } catch {
+        Write-Host "`nERROR: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    Read-Host "`nPress Enter to continue"
+}
+</script>
+
+<script>
+// Inject script text into the display block (no HTML escaping needed)
+(function() {
+    var data = document.getElementById('ps-script-data');
+    var display = document.getElementById('ps-script-display');
+    if (data && display) {
+        display.appendChild(document.createTextNode(data.textContent));
+    }
+})();
+
+// Copy small code blocks - skip the button text
+function cp(btn) {
+    var parent = btn.parentElement;
+    var text = '';
+    parent.childNodes.forEach(function(node) {
+        if (node !== btn) { text += node.textContent || ''; }
+    });
+    text = text.trim();
+    navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'COPIED!';
+        btn.classList.add('ok');
+        setTimeout(function() {
+            btn.textContent = 'COPY';
+            btn.classList.remove('ok');
+        }, 1800);
+    });
+}
+
+// Copy the big PowerShell script from its text/plain store
+function cpScript(btn) {
+    var text = document.getElementById('ps-script-data').textContent.trim();
+    navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'COPIED!';
+        btn.classList.add('ok');
+        setTimeout(function() {
+            btn.textContent = 'COPY SCRIPT';
+            btn.classList.remove('ok');
+        }, 1800);
+    });
+}
+</script>
+
+</body>
+</html>
