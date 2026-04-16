@@ -1,0 +1,2001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PYX Health - Databricks Serverless Deployment Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --pyx-blue: #0078d4;
+    --pyx-dark: #1a1a2e;
+    --pyx-light: #f0f6ff;
+    --pyx-accent: #00a2ed;
+    --pyx-green: #107c10;
+    --pyx-orange: #ff8c00;
+    --pyx-red: #d13438;
+    --pyx-purple: #5c2d91;
+    --pyx-border: #d1dbe8;
+    --pyx-card-shadow: 0 2px 12px rgba(0,120,212,0.08);
+    --pyx-text: #323130;
+    --pyx-text-muted: #605e5c;
+    --code-bg: #1e1e2e;
+    --code-text: #cdd6f4;
+    --sidebar-width: 280px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--pyx-text);
+    background: #fafbfc;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* SIDEBAR TOC */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: white;
+    border-right: 1px solid var(--pyx-border);
+    overflow-y: auto;
+    z-index: 100;
+    padding: 20px 0;
+    box-shadow: 2px 0 20px rgba(0,0,0,0.04);
+  }
+
+  .sidebar-logo {
+    padding: 12px 20px 20px;
+    border-bottom: 1px solid var(--pyx-border);
+    margin-bottom: 16px;
+  }
+
+  .sidebar-logo h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--pyx-blue);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .sidebar-logo p {
+    font-size: 11px;
+    color: var(--pyx-text-muted);
+    margin-top: 4px;
+  }
+
+  .toc-list {
+    list-style: none;
+    padding: 0 12px;
+  }
+
+  .toc-list li {
+    margin-bottom: 2px;
+  }
+
+  .toc-list a {
+    display: block;
+    padding: 7px 12px;
+    font-size: 12.5px;
+    color: var(--pyx-text-muted);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: all 0.2s;
+    font-weight: 400;
+    line-height: 1.4;
+  }
+
+  .toc-list a:hover {
+    background: var(--pyx-light);
+    color: var(--pyx-blue);
+  }
+
+  .toc-list a.active {
+    background: var(--pyx-blue);
+    color: white;
+    font-weight: 500;
+  }
+
+  .toc-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #a0a0a0;
+    padding: 12px 12px 6px;
+  }
+
+  /* MAIN CONTENT */
+  .main-content {
+    margin-left: var(--sidebar-width);
+    max-width: 1000px;
+    padding: 0 40px 80px;
+  }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(135deg, var(--pyx-blue) 0%, #005a9e 50%, #003c6e 100%);
+    color: white;
+    padding: 48px 40px;
+    margin: 0 -40px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+  }
+
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -60%;
+    left: -5%;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .header h1 {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .header .subtitle {
+    font-size: 16px;
+    font-weight: 300;
+    opacity: 0.9;
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .header .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    position: relative;
+    z-index: 1;
+  }
+
+  .header .warning-banner {
+    background: rgba(255,140,0,0.25);
+    border: 1px solid rgba(255,140,0,0.5);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* SECTIONS */
+  .section {
+    margin-bottom: 48px;
+    scroll-margin-top: 24px;
+  }
+
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--pyx-dark);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--pyx-blue);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-title .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--pyx-blue);
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* CARDS */
+  .card {
+    background: white;
+    border: 1px solid var(--pyx-border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--pyx-card-shadow);
+  }
+
+  .card h4 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--pyx-dark);
+    margin-bottom: 8px;
+  }
+
+  .card p {
+    font-size: 14px;
+    color: var(--pyx-text-muted);
+  }
+
+  /* COMPONENT CARDS GRID */
+  .component-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .component-card {
+    background: white;
+    border: 1px solid var(--pyx-border);
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+    box-shadow: var(--pyx-card-shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .component-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,120,212,0.12);
+  }
+
+  .component-card .icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 10px;
+    font-size: 20px;
+  }
+
+  .component-card .icon.blue { background: #e8f2ff; color: var(--pyx-blue); }
+  .component-card .icon.green { background: #e8f5e8; color: var(--pyx-green); }
+  .component-card .icon.orange { background: #fff3e0; color: var(--pyx-orange); }
+  .component-card .icon.purple { background: #f3e8ff; color: var(--pyx-purple); }
+  .component-card .icon.red { background: #fde8e8; color: var(--pyx-red); }
+
+  .component-card h5 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--pyx-dark);
+    margin-bottom: 4px;
+  }
+
+  .component-card p {
+    font-size: 11px;
+    color: var(--pyx-text-muted);
+    line-height: 1.4;
+  }
+
+  .ent-only {
+    position: relative;
+  }
+
+  .ent-only::after {
+    content: 'ENTERPRISE';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font-size: 8px;
+    font-weight: 700;
+    background: var(--pyx-purple);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--code-bg);
+    border-radius: 10px;
+    margin: 16px 0;
+    overflow: hidden;
+  }
+
+  .code-header {
+    background: #181825;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #313244;
+  }
+
+  .code-header span {
+    font-size: 12px;
+    color: #a6adc8;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .copy-btn {
+    background: #45475a;
+    color: #cdd6f4;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: background 0.2s;
+  }
+
+  .copy-btn:hover {
+    background: #585b70;
+  }
+
+  .code-content {
+    padding: 16px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--code-text);
+  }
+
+  .code-content pre {
+    margin: 0;
+    white-space: pre;
+  }
+
+  .code-content .comment { color: #6c7086; }
+  .code-content .keyword { color: #cba6f7; }
+  .code-content .string { color: #a6e3a1; }
+  .code-content .variable { color: #89b4fa; }
+  .code-content .flag { color: #f9e2af; }
+  .code-content .important { color: #f38ba8; font-weight: 600; }
+
+  /* TABLES */
+  .table-wrapper {
+    overflow-x: auto;
+    border-radius: 10px;
+    border: 1px solid var(--pyx-border);
+    box-shadow: var(--pyx-card-shadow);
+    margin: 16px 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    font-size: 13px;
+  }
+
+  thead th {
+    background: var(--pyx-blue);
+    color: white;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #eef1f5;
+    vertical-align: top;
+  }
+
+  tbody tr:hover { background: #f8fafd; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .badge-yes {
+    display: inline-block;
+    background: #e8f5e8;
+    color: var(--pyx-green);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .badge-no {
+    display: inline-block;
+    background: #f5f5f5;
+    color: #999;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .badge-ent {
+    display: inline-block;
+    background: #f3e8ff;
+    color: var(--pyx-purple);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* ARCHITECTURE DIAGRAM */
+  .arch-diagram {
+    background: white;
+    border: 1px solid var(--pyx-border);
+    border-radius: 10px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-x: auto;
+    box-shadow: var(--pyx-card-shadow);
+    margin: 16px 0;
+  }
+
+  .arch-diagram pre {
+    white-space: pre;
+    color: var(--pyx-dark);
+  }
+
+  /* COLLAPSIBLE SECTIONS */
+  .collapsible {
+    margin: 16px 0;
+  }
+
+  .collapsible-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    background: white;
+    border: 1px solid var(--pyx-border);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--pyx-dark);
+    transition: all 0.2s;
+    font-family: inherit;
+    text-align: left;
+  }
+
+  .collapsible-toggle:hover {
+    background: var(--pyx-light);
+    border-color: var(--pyx-blue);
+  }
+
+  .collapsible-toggle::before {
+    content: '+';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: var(--pyx-light);
+    color: var(--pyx-blue);
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+    transition: transform 0.2s;
+  }
+
+  .collapsible-toggle.active::before {
+    content: '-';
+    background: var(--pyx-blue);
+    color: white;
+  }
+
+  .collapsible-toggle.active {
+    border-radius: 10px 10px 0 0;
+    border-bottom: none;
+    background: var(--pyx-light);
+  }
+
+  .collapsible-body {
+    display: none;
+    padding: 20px;
+    background: white;
+    border: 1px solid var(--pyx-border);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+  }
+
+  .collapsible-body.active {
+    display: block;
+  }
+
+  /* STEP CARDS */
+  .step-card {
+    background: white;
+    border: 1px solid var(--pyx-border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: var(--pyx-card-shadow);
+    border-left: 4px solid var(--pyx-blue);
+  }
+
+  .step-card h4 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--pyx-dark);
+    margin-bottom: 12px;
+  }
+
+  .step-card h4 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--pyx-blue);
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* INFO/WARNING BOXES */
+  .info-box {
+    background: #e8f2ff;
+    border-left: 4px solid var(--pyx-blue);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+
+  .warn-box {
+    background: #fff8e1;
+    border-left: 4px solid var(--pyx-orange);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+
+  .critical-box {
+    background: #fde8e8;
+    border-left: 4px solid var(--pyx-red);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+
+  .success-box {
+    background: #e8f5e8;
+    border-left: 4px solid var(--pyx-green);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+
+  /* COMPARISON CARDS */
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 16px 0;
+  }
+
+  .comparison-card {
+    background: white;
+    border: 2px solid var(--pyx-border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .comparison-card.budget .comparison-header { background: var(--pyx-blue); }
+  .comparison-card.enterprise .comparison-header { background: var(--pyx-purple); }
+
+  .comparison-header {
+    padding: 16px 20px;
+    color: white;
+  }
+
+  .comparison-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .comparison-header .price {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-top: 4px;
+  }
+
+  .comparison-body {
+    padding: 20px;
+  }
+
+  .comparison-body ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .comparison-body li {
+    padding: 6px 0;
+    font-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .comparison-body li::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+
+  .comparison-card.budget li::before { background: var(--pyx-blue); }
+  .comparison-card.enterprise li::before { background: var(--pyx-purple); }
+
+  /* TIMELINE */
+  .timeline {
+    position: relative;
+    padding-left: 40px;
+    margin: 20px 0;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 14px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--pyx-blue);
+  }
+
+  .timeline-item {
+    position: relative;
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    background: white;
+    border: 1px solid var(--pyx-border);
+    border-radius: 10px;
+    box-shadow: var(--pyx-card-shadow);
+  }
+
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -34px;
+    top: 20px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--pyx-blue);
+    border: 3px solid white;
+    box-shadow: 0 0 0 2px var(--pyx-blue);
+  }
+
+  .timeline-item h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--pyx-dark);
+    margin-bottom: 6px;
+  }
+
+  .timeline-item p {
+    font-size: 13px;
+    color: var(--pyx-text-muted);
+  }
+
+  .timeline-item .week-badge {
+    display: inline-block;
+    background: var(--pyx-light);
+    color: var(--pyx-blue);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+  }
+
+  /* FOOTER */
+  .footer {
+    background: var(--pyx-dark);
+    color: white;
+    padding: 32px 40px;
+    margin: 60px -40px 0;
+    text-align: center;
+  }
+
+  .footer p {
+    font-size: 13px;
+    opacity: 0.7;
+    margin: 4px 0;
+  }
+
+  .footer .critical-note {
+    background: rgba(255,140,0,0.15);
+    border: 1px solid rgba(255,140,0,0.3);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-top: 16px;
+    display: inline-block;
+  }
+
+  /* PRINT STYLES */
+  @media print {
+    .sidebar { display: none; }
+    .main-content { margin-left: 0; padding: 0; max-width: 100%; }
+    .header { margin: 0; padding: 30px; }
+    .copy-btn { display: none; }
+    .collapsible-body { display: block !important; }
+    .code-block { break-inside: avoid; }
+    table { break-inside: avoid; }
+    .section { break-inside: avoid; page-break-inside: avoid; }
+    body { font-size: 12px; }
+  }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main-content { margin-left: 0; }
+    .comparison-grid { grid-template-columns: 1fr; }
+    .component-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR TOC -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h3>PYX Health</h3>
+    <p>Databricks Deployment Guide</p>
+  </div>
+  <ul class="toc-list">
+    <li class="toc-section-title">Overview</li>
+    <li><a href="#executive-summary">Executive Summary</a></li>
+    <li><a href="#whats-deployed">What's Being Deployed</a></li>
+    <li><a href="#architecture">Architecture Diagram</a></li>
+    <li><a href="#comparison">Budget vs Enterprise</a></li>
+    <li class="toc-section-title">Preparation</li>
+    <li><a href="#prerequisites">Prerequisites</a></li>
+    <li><a href="#network-detail">Network Architecture</a></li>
+    <li class="toc-section-title">Deployment</li>
+    <li><a href="#deploy-budget">Deploy: Budget</a></li>
+    <li><a href="#deploy-enterprise">Deploy: Enterprise</a></li>
+    <li><a href="#tfvars-reference">terraform.tfvars Reference</a></li>
+    <li class="toc-section-title">Security</li>
+    <li><a href="#security-matrix">Security Controls</a></li>
+    <li><a href="#rbac-matrix">RBAC & Permissions</a></li>
+    <li><a href="#unity-catalog">Unity Catalog Setup</a></li>
+    <li><a href="#hitrust">Serverless HITRUST</a></li>
+    <li class="toc-section-title">Operations</li>
+    <li><a href="#cost-analysis">Cost Analysis</a></li>
+    <li><a href="#verification">Post-Deploy Verification</a></li>
+    <li><a href="#rollback">Rollback Procedure</a></li>
+    <li class="toc-section-title">Planning</li>
+    <li><a href="#responsibilities">Team Responsibilities</a></li>
+    <li><a href="#timeline">Timeline</a></li>
+  </ul>
+</nav>
+
+<!-- MAIN CONTENT -->
+<div class="main-content">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>PYX HEALTH &mdash; DATABRICKS SERVERLESS DEPLOYMENT GUIDE</h1>
+    <div class="subtitle">New Architecture &mdash; West US 2 / West US &mdash; Automated Terraform Deployment</div>
+    <div class="badge">Prepared by Syed Rizvi &nbsp;|&nbsp; Infrastructure Engineering &nbsp;|&nbsp; April 2026</div>
+    <div class="warning-banner">
+      <strong>IMPORTANT:</strong>&nbsp; This is a NEW deployment &mdash; not a migration. Existing workspaces (pyx-warehouse-prod, pyxlake-databricks) on sub-corp-prod-001 remain completely untouched.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 1. EXECUTIVE SUMMARY -->
+  <!-- ============================================================ -->
+  <div class="section" id="executive-summary">
+    <div class="section-title"><span class="step-num">1</span> Executive Summary</div>
+    <div class="card">
+      <p>This guide details the deployment of a brand-new Databricks Serverless architecture for PYX Health. This is <strong>not</strong> a migration &mdash; we are creating entirely new infrastructure in <strong>West US 2</strong> (primary) and <strong>West US</strong> (DR) using three new Azure subscriptions arranged in a hub-spoke topology. Two fully-automated Terraform deployment options are provided: <strong>Budget</strong> (~$5,800/mo, optimized for cost with NSG-based security) and <strong>Enterprise</strong> (full security lockdown with Azure Firewall, Private Link, CMK encryption, and Sentinel SIEM). Both options leverage Databricks Serverless Compute, Unity Catalog for data governance, and are ready for HITRUST certification (Databricks Serverless HITRUST compliance available April 24, 2026). The entire deployment is automated end-to-end via Terraform &mdash; zero manual configuration required. Infrastructure deploys in approximately 30 minutes.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 2. WHAT'S BEING DEPLOYED -->
+  <!-- ============================================================ -->
+  <div class="section" id="whats-deployed">
+    <div class="section-title"><span class="step-num">2</span> What's Being Deployed</div>
+
+    <div class="component-grid">
+      <div class="component-card">
+        <div class="icon blue">&#9881;</div>
+        <h5>Databricks Workspaces</h5>
+        <p>DEV (Standard) + PROD (Premium) with Serverless Compute enabled</p>
+      </div>
+      <div class="component-card">
+        <div class="icon blue">&#127760;</div>
+        <h5>Hub-Spoke Network</h5>
+        <p>3 VNets, subnets, NSGs, VNet Peering, Route Tables</p>
+      </div>
+      <div class="component-card">
+        <div class="icon green">&#128451;</div>
+        <h5>ADLS Gen2 Data Lake</h5>
+        <p>Bronze / Silver / Gold medallion + checkpoints + mlflow</p>
+      </div>
+      <div class="component-card">
+        <div class="icon purple">&#128218;</div>
+        <h5>Unity Catalog</h5>
+        <p>Metastore, pyx_dev + pyx_prod catalogs, bronze/silver/gold schemas</p>
+      </div>
+      <div class="component-card">
+        <div class="icon orange">&#128273;</div>
+        <h5>Key Vault</h5>
+        <p>Standard (Budget) or Premium HSM-backed (Enterprise) encryption keys</p>
+      </div>
+      <div class="component-card">
+        <div class="icon blue">&#128101;</div>
+        <h5>Azure AD Groups + RBAC</h5>
+        <p>6 security groups, 3 service principals, full role assignments</p>
+      </div>
+      <div class="component-card">
+        <div class="icon green">&#128203;</div>
+        <h5>Azure Policy</h5>
+        <p>Location lock (West US 2/West US), tag enforcement (Environment, Owner)</p>
+      </div>
+      <div class="component-card">
+        <div class="icon orange">&#128202;</div>
+        <h5>Log Analytics + Alerts</h5>
+        <p>365-day retention (HIPAA), cluster/job/PHI access alerts</p>
+      </div>
+      <div class="component-card">
+        <div class="icon blue">&#9889;</div>
+        <h5>SQL Warehouses</h5>
+        <p>Serverless Pro warehouses: DEV (XXSMALL) + PROD (MEDIUM)</p>
+      </div>
+      <div class="component-card ent-only">
+        <div class="icon red">&#128293;</div>
+        <h5>Azure Firewall</h5>
+        <p>Standard SKU, all egress filtered, deny-all-internet default</p>
+      </div>
+      <div class="component-card ent-only">
+        <div class="icon purple">&#128279;</div>
+        <h5>Private Link</h5>
+        <p>Databricks, ADLS blob/dfs, Key Vault &mdash; zero public exposure</p>
+      </div>
+      <div class="component-card ent-only">
+        <div class="icon red">&#128737;</div>
+        <h5>Sentinel SIEM</h5>
+        <p>SecurityInsights solution, brute-force detection, cost anomalies</p>
+      </div>
+      <div class="component-card ent-only">
+        <div class="icon purple">&#9878;</div>
+        <h5>PHI Pipeline</h5>
+        <p>Daily de-identification (Bronze &rarr; Silver tokenization), validation suite</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 3. ARCHITECTURE DIAGRAM -->
+  <!-- ============================================================ -->
+  <div class="section" id="architecture">
+    <div class="section-title"><span class="step-num">3</span> Architecture Diagram</div>
+    <div class="arch-diagram">
+<pre>
+                          +----------------------------------------------+
+                          |         AZURE ACTIVE DIRECTORY                |
+                          |   6 Groups  |  3 Service Principals  | RBAC  |
+                          +----------------------------------------------+
+                                               |
+        +======================================================================+
+        |                     HUB VNet: 10.0.0.0/16                            |
+        |                     rg-pyx-hub-network                               |
+        |  +------------------+  +------------------+  +-------------------+   |
+        |  | AzureFirewallSnet|  | AzureBastionSnet |  | GatewaySubnet     |   |
+        |  | 10.0.1.0/26      |  | 10.0.2.0/26      |  | 10.0.3.0/27       |   |
+        |  | fw-pyx-hub  [E]  |  | bas-pyx-hub  [E] |  | (reserved)        |   |
+        |  +------------------+  +------------------+  +-------------------+   |
+        |  +----------------------------------------------+                    |
+        |  | snet-management  10.0.4.0/24                  |                    |
+        |  | nsg-pyx-hub-mgmt (deny-all-inbound)           |                    |
+        |  +----------------------------------------------+                    |
+        |                                                                      |
+        |    [E] = Enterprise Only        VNet Peering                         |
+        +=============================+============+===========================+
+                                      |            |
+                  VNet Peering        |            |        VNet Peering
+            +-------------------------+            +-------------------------+
+            |                                                                |
+  +=========================+                              +=========================+
+  |  DEV Spoke: 10.1.0.0/16 |                              | PROD Spoke: 10.2.0.0/16 |
+  |  rg-pyx-databricks-dev   |                              | rg-pyx-databricks-prod   |
+  |                          |                              |                          |
+  | +----------------------+ |                              | +----------------------+ |
+  | | snet-databricks-pub  | |                              | | snet-databricks-pub  | |
+  | | 10.1.1.0/24          | |                              | | 10.2.1.0/24          | |
+  | | (Databricks public)  | |                              | | (Databricks public)  | |
+  | +----------------------+ |                              | +----------------------+ |
+  | +----------------------+ |                              | +----------------------+ |
+  | | snet-databricks-priv | |                              | | snet-databricks-priv | |
+  | | 10.1.2.0/24          | |                              | | 10.2.2.0/24          | |
+  | | (Databricks private) | |                              | | (Databricks private) | |
+  | +----------------------+ |                              | +----------------------+ |
+  | +----------------------+ |                              | +----------------------+ |
+  | | snet-pe  10.1.3.0/24 | |                              | | snet-pe  10.2.3.0/24 | |
+  | | (Private Endpoints)  | |                              | | (Private Endpoints)  | |
+  | +----------------------+ |                              | +----------------------+ |
+  |                          |                              |                          |
+  | dbw-pyx-dev (Standard)   |                              | dbw-pyx-prod (Premium)   |
+  | dev-interactive cluster  |                              | prod-etl-cluster         |
+  | dev-sql-warehouse (XXS)  |                              | prod-sql-warehouse (MED) |
+  | stpyxdldev (ADLS, LRS)  |                              | stpyxdlprod (ADLS, GRS)  |
+  | kv-pyx-dev (Standard)    |                              | kv-pyx-prod (Prem) [E]   |
+  +=========================+                              +=========================+
+                                       |
+                      +-------------------------------+
+                      |      UNITY CATALOG             |
+                      |   pyx-unity-metastore          |
+                      |   pyx_dev  |  pyx_prod         |
+                      |   bronze | silver | gold       |
+                      +-------------------------------+
+                                       |
+                      +-------------------------------+
+                      |   MONITORING / rg-pyx-monitoring|
+                      |   law-pyx-platform (365 day)   |
+                      |   Sentinel SIEM [E]            |
+                      |   Alerts: cluster, PHI, jobs   |
+                      +-------------------------------+
+</pre>
+    </div>
+    <div class="info-box"><strong>Legend:</strong> [E] = Enterprise deployment only. Budget deployment uses NSGs + service endpoints instead of Firewall/Bastion. All VNet Peering and route tables are automatically configured by Terraform.</div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 4. BUDGET vs ENTERPRISE COMPARISON -->
+  <!-- ============================================================ -->
+  <div class="section" id="comparison">
+    <div class="section-title"><span class="step-num">4</span> Budget vs Enterprise Comparison</div>
+
+    <div class="comparison-grid">
+      <div class="comparison-card budget">
+        <div class="comparison-header">
+          <h3>Budget Deploy</h3>
+          <div class="price">~$5,800/mo | $69,600/yr</div>
+        </div>
+        <div class="comparison-body">
+          <ul>
+            <li>6 Terraform modules</li>
+            <li>NSG-based network security (no Firewall)</li>
+            <li>No Azure Bastion (SSH/RDP via VPN)</li>
+            <li>Standard Key Vault (PROD)</li>
+            <li>Microsoft-managed encryption</li>
+            <li>No Sentinel SIEM</li>
+            <li>Spot VMs for DEV (80% savings)</li>
+            <li>Private Endpoints for PROD workspace + storage</li>
+            <li>Log Analytics 365-day (HIPAA)</li>
+            <li>Best for: Teams starting Databricks, cost-sensitive</li>
+          </ul>
+        </div>
+      </div>
+      <div class="comparison-card enterprise">
+        <div class="comparison-header">
+          <h3>Enterprise Deploy</h3>
+          <div class="price">~$7,200/mo | $86,400/yr</div>
+        </div>
+        <div class="comparison-body">
+          <ul>
+            <li>8 Terraform modules (+ unity_catalog, phi_pipeline)</li>
+            <li>Azure Firewall Standard (all egress filtered)</li>
+            <li>Azure Bastion Standard (secure admin access)</li>
+            <li>Premium Key Vault (HSM-backed CMK)</li>
+            <li>Customer-managed keys (90-day auto-rotation)</li>
+            <li>Sentinel SIEM (threat detection)</li>
+            <li>Photon runtime for PROD ETL</li>
+            <li>Private Link for ALL services (Databricks, ADLS, KV)</li>
+            <li>PHI Pipeline (daily de-identification + validation)</li>
+            <li>Best for: HITRUST audit, full PHI processing</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Feature</th><th>Budget</th><th>Enterprise</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Terraform Modules</strong></td><td>6</td><td>8</td></tr>
+          <tr><td><strong>DEV Workspace SKU</strong></td><td>Standard</td><td>Standard</td></tr>
+          <tr><td><strong>PROD Workspace SKU</strong></td><td>Premium</td><td>Premium</td></tr>
+          <tr><td><strong>Azure Firewall</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Standard SKU</span></td></tr>
+          <tr><td><strong>Azure Bastion</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Standard SKU</span></td></tr>
+          <tr><td><strong>Private Endpoints</strong></td><td>PROD only (workspace, blob, dfs)</td><td>ALL services (workspace, blob, dfs, Key Vault)</td></tr>
+          <tr><td><strong>Key Vault SKU</strong></td><td>Standard</td><td>Premium (HSM-backed)</td></tr>
+          <tr><td><strong>Encryption</strong></td><td>SSE (Microsoft-managed)</td><td>CMK (90-day auto-rotation)</td></tr>
+          <tr><td><strong>Sentinel SIEM</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Active</span></td></tr>
+          <tr><td><strong>PagerDuty Integration</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Webhook</span></td></tr>
+          <tr><td><strong>DEV Cluster VMs</strong></td><td>Spot (80% savings)</td><td>Spot (80% savings)</td></tr>
+          <tr><td><strong>PROD Cluster Runtime</strong></td><td>Standard 14.3.x</td><td>Photon 14.3.x</td></tr>
+          <tr><td><strong>Staging Cluster</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">DS3_v2 (1-2 workers)</span></td></tr>
+          <tr><td><strong>Unity Catalog Module</strong></td><td>Inline per workspace</td><td>Dedicated module + grants</td></tr>
+          <tr><td><strong>Column Masking</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">mask_ssn, mask_dob, etc.</span></td></tr>
+          <tr><td><strong>PHI Pipeline</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Daily de-identification</span></td></tr>
+          <tr><td><strong>Deny Public IP Policy</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Subscription-level</span></td></tr>
+          <tr><td><strong>Login Anomaly Alerts</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">5+ failures in 10min</span></td></tr>
+          <tr><td><strong>PROD No Public IP</strong></td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td><strong>ADLS PROD Replication</strong></td><td>GRS (West US DR)</td><td>GRS (West US DR)</td></tr>
+          <tr><td><strong>Route Table (UDR)</strong></td><td><span class="badge-no">No</span></td><td><span class="badge-yes">All traffic via Firewall</span></td></tr>
+          <tr><td><strong>Estimated Monthly</strong></td><td><strong>~$5,800</strong></td><td><strong>~$7,200</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box">
+      <strong>Which one to pick?</strong> Start with <strong>Budget</strong> if you are testing Databricks Serverless and do not yet process PHI in the new platform. Upgrade to <strong>Enterprise</strong> when you need HITRUST audit readiness, PHI de-identification pipelines, or full egress control via Azure Firewall. Both share the same variable structure so switching is straightforward.
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 5. PREREQUISITES -->
+  <!-- ============================================================ -->
+  <div class="section" id="prerequisites">
+    <div class="section-title"><span class="step-num">5</span> Prerequisites</div>
+    <div class="card">
+      <h4>Required Tools</h4>
+      <div class="code-block">
+        <div class="code-header"><span>PowerShell / Terminal</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <div class="code-content"><pre><span class="comment"># Verify Azure CLI (2.50+ required)</span>
+az --version
+
+<span class="comment"># Verify Terraform (1.5+ required)</span>
+terraform --version
+
+<span class="comment"># Login to Azure</span>
+az login
+
+<span class="comment"># Verify your account</span>
+az account show --output table</pre></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>Required Azure Permissions</h4>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr><th>Requirement</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>3 Azure Subscription IDs</strong></td><td>Hub (networking), DEV (development), PROD (production) &mdash; NEW subscriptions, not existing</td></tr>
+            <tr><td><strong>Subscription RBAC</strong></td><td>Contributor + User Access Administrator on all 3 subscriptions</td></tr>
+            <tr><td><strong>Azure AD Role</strong></td><td>Global Administrator or Privileged Role Administrator (for creating AD groups)</td></tr>
+            <tr><td><strong>Databricks Account</strong></td><td>Account admin access at accounts.azuredatabricks.net</td></tr>
+            <tr><td><strong>Resource Providers</strong></td><td>Microsoft.Databricks, Microsoft.Storage, Microsoft.KeyVault, Microsoft.Network registered on all subs</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="warn-box"><strong>Note:</strong> The deploy.ps1 script will automatically create the Terraform state backend (rg-pyx-terraform-state / stpyxterraformstate / tfstate container) if it does not already exist.</div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 6. NETWORK ARCHITECTURE DETAIL -->
+  <!-- ============================================================ -->
+  <div class="section" id="network-detail">
+    <div class="section-title"><span class="step-num">6</span> Network Architecture Detail</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>VNet</th><th>Subnet</th><th>CIDR</th><th>Purpose</th><th>NSG</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="4"><strong>Hub</strong><br>vnet-pyx-hub<br>10.0.0.0/16</td>
+            <td>AzureFirewallSubnet</td><td>10.0.1.0/26</td><td>Azure Firewall [Enterprise]</td><td>N/A (managed)</td></tr>
+          <tr><td>AzureBastionSubnet</td><td>10.0.2.0/26</td><td>Azure Bastion [Enterprise]</td><td>N/A (managed)</td></tr>
+          <tr><td>GatewaySubnet</td><td>10.0.3.0/27</td><td>VPN/ExpressRoute Gateway (reserved)</td><td>N/A (managed)</td></tr>
+          <tr><td>snet-management</td><td>10.0.4.0/24</td><td>Management jump boxes</td><td>nsg-pyx-hub-mgmt<br>deny-all-inbound</td></tr>
+          <tr><td rowspan="3"><strong>DEV</strong><br>vnet-pyx-dev<br>10.1.0.0/16</td>
+            <td>snet-databricks-public</td><td>10.1.1.0/24</td><td>Databricks public subnet (delegated)</td><td>nsg-pyx-databricks-dev</td></tr>
+          <tr><td>snet-databricks-private</td><td>10.1.2.0/24</td><td>Databricks private subnet (delegated)</td><td>nsg-pyx-databricks-dev</td></tr>
+          <tr><td>snet-pe</td><td>10.1.3.0/24</td><td>Private Endpoints</td><td>Default deny</td></tr>
+          <tr><td rowspan="3"><strong>PROD</strong><br>vnet-pyx-prod<br>10.2.0.0/16</td>
+            <td>snet-databricks-public</td><td>10.2.1.0/24</td><td>Databricks public subnet (delegated)</td><td>nsg-pyx-databricks-prod</td></tr>
+          <tr><td>snet-databricks-private</td><td>10.2.2.0/24</td><td>Databricks private subnet (delegated)</td><td>nsg-pyx-databricks-prod</td></tr>
+          <tr><td>snet-pe</td><td>10.2.3.0/24</td><td>Private Endpoints (workspace, blob, dfs, KV)</td><td>Default deny</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="margin-top: 20px; margin-bottom: 10px;">VNet Peering</h4>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Peering Name</th><th>Source</th><th>Destination</th><th>Gateway Transit</th><th>Forwarded Traffic</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>peer-hub-to-dev</td><td>vnet-pyx-hub</td><td>vnet-pyx-dev</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>peer-dev-to-hub</td><td>vnet-pyx-dev</td><td>vnet-pyx-hub</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>peer-hub-to-prod</td><td>vnet-pyx-hub</td><td>vnet-pyx-prod</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>peer-prod-to-hub</td><td>vnet-pyx-prod</td><td>vnet-pyx-hub</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Yes</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="margin-top: 20px; margin-bottom: 10px;">PROD NSG Rules (nsg-pyx-databricks-prod)</h4>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Priority</th><th>Name</th><th>Direction</th><th>Action</th><th>Protocol</th><th>Source</th><th>Destination</th><th>Port</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>100</td><td>allow-databricks-worker-internal</td><td>Inbound</td><td><span class="badge-yes">Allow</span></td><td>Any</td><td>VirtualNetwork</td><td>VirtualNetwork</td><td>*</td></tr>
+          <tr><td>200</td><td>allow-azure-lb</td><td>Inbound</td><td><span class="badge-yes">Allow</span></td><td>TCP</td><td>AzureLoadBalancer</td><td>*</td><td>*</td></tr>
+          <tr><td>4096</td><td>deny-all-inbound</td><td>Inbound</td><td><span class="badge-no">Deny</span></td><td>Any</td><td>*</td><td>*</td><td>*</td></tr>
+          <tr><td>100</td><td>allow-databricks-control-plane</td><td>Outbound</td><td><span class="badge-yes">Allow</span></td><td>TCP</td><td>VirtualNetwork</td><td>AzureDatabricks</td><td>443</td></tr>
+          <tr><td>200</td><td>allow-azure-services</td><td>Outbound</td><td><span class="badge-yes">Allow</span></td><td>TCP</td><td>VirtualNetwork</td><td>AzureCloud.westus2</td><td>443</td></tr>
+          <tr><td>300</td><td>allow-dns</td><td>Outbound</td><td><span class="badge-yes">Allow</span></td><td>Any</td><td>VirtualNetwork</td><td>168.63.129.16</td><td>53</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 7. DEPLOY: BUDGET -->
+  <!-- ============================================================ -->
+  <div class="section" id="deploy-budget">
+    <div class="section-title"><span class="step-num">7</span> Step-by-Step Deployment &mdash; Budget</div>
+
+    <div class="step-card">
+      <h4><span class="num">1</span> Get the Terraform Code</h4>
+      <p>Download or clone the <code>PYX-Databricks-Budget-Deploy</code> folder. It contains:</p>
+      <div class="code-block">
+        <div class="code-header"><span>Directory Structure</span></div>
+        <div class="code-content"><pre>PYX-Databricks-Budget-Deploy/
+  main.tf                 <span class="comment"># Root module - wires all 6 modules</span>
+  variables.tf            <span class="comment"># All input variables with defaults</span>
+  terraform.tfvars        <span class="comment"># YOUR values (edit this)</span>
+  outputs.tf              <span class="comment"># Deployment outputs</span>
+  deploy.ps1              <span class="comment"># One-click deployment script</span>
+  modules/
+    network/main.tf       <span class="comment"># Hub-spoke VNets, subnets, NSGs, peering</span>
+    storage/main.tf       <span class="comment"># ADLS Gen2 (DEV LRS, PROD GRS), Key Vault</span>
+    databricks_dev/main.tf    <span class="comment"># DEV workspace, Spot cluster, SQL warehouse</span>
+    databricks_prod/main.tf   <span class="comment"># PROD workspace, ETL cluster, Private Endpoints</span>
+    security/main.tf      <span class="comment"># 6 AD groups, 3 SPs, RBAC, Azure Policy</span>
+    monitoring/main.tf    <span class="comment"># Log Analytics, alerts, cost budgets</span></pre></div>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">2</span> Edit terraform.tfvars</h4>
+      <p>Open <code>terraform.tfvars</code> and replace the three subscription ID placeholders with your actual Azure subscription IDs:</p>
+      <div class="code-block">
+        <div class="code-header"><span>terraform.tfvars</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <div class="code-content"><pre><span class="comment"># ===========================================================</span>
+<span class="comment"># PYX Health - Databricks Serverless Budget Deployment</span>
+<span class="comment"># UPDATE THESE 3 VALUES WITH YOUR ACTUAL SUBSCRIPTION IDs</span>
+<span class="comment"># ===========================================================</span>
+
+<span class="variable">hub_subscription_id</span>  = <span class="important">"REPLACE-WITH-HUB-SUBSCRIPTION-ID"</span>
+<span class="variable">dev_subscription_id</span>  = <span class="important">"REPLACE-WITH-DEV-SUBSCRIPTION-ID"</span>
+<span class="variable">prod_subscription_id</span> = <span class="important">"REPLACE-WITH-PROD-SUBSCRIPTION-ID"</span>
+
+<span class="comment"># --- Region (do not change) ---</span>
+<span class="variable">location</span>    = <span class="string">"westus2"</span>
+<span class="variable">dr_location</span> = <span class="string">"westus"</span>
+
+<span class="variable">project_prefix</span> = <span class="string">"pyx"</span>
+
+<span class="variable">tags</span> = {
+  Project    = <span class="string">"PYX-Databricks"</span>
+  ManagedBy  = <span class="string">"Terraform"</span>
+  CostCenter = <span class="string">"IT-DataPlatform"</span>
+  Owner      = <span class="string">"SyedRizvi"</span>
+}
+
+<span class="comment"># --- Network (defaults are correct) ---</span>
+<span class="variable">hub_vnet_cidr</span>  = <span class="string">"10.0.0.0/16"</span>
+<span class="variable">dev_vnet_cidr</span>  = <span class="string">"10.1.0.0/16"</span>
+<span class="variable">prod_vnet_cidr</span> = <span class="string">"10.2.0.0/16"</span>
+
+<span class="comment"># --- DEV Compute (Budget-Optimized, Spot VMs) ---</span>
+<span class="variable">dev_cluster_node_type</span>       = <span class="string">"Standard_DS3_v2"</span>
+<span class="variable">dev_max_workers</span>             = <span class="keyword">2</span>
+<span class="variable">dev_autotermination_minutes</span> = <span class="keyword">15</span>
+<span class="variable">dev_sql_warehouse_size</span>      = <span class="string">"XXSMALL"</span>
+<span class="variable">dev_sql_auto_stop_mins</span>      = <span class="keyword">5</span>
+
+<span class="comment"># --- PROD Compute ---</span>
+<span class="variable">prod_cluster_node_type</span>       = <span class="string">"Standard_DS4_v2"</span>
+<span class="variable">prod_max_workers</span>             = <span class="keyword">8</span>
+<span class="variable">prod_autotermination_minutes</span> = <span class="keyword">30</span>
+<span class="variable">prod_sql_warehouse_size</span>      = <span class="string">"MEDIUM"</span>
+<span class="variable">prod_sql_auto_stop_mins</span>      = <span class="keyword">10</span>
+
+<span class="comment"># --- Storage (medallion architecture) ---</span>
+<span class="variable">adls_containers</span> = [<span class="string">"bronze"</span>, <span class="string">"silver"</span>, <span class="string">"gold"</span>, <span class="string">"checkpoints"</span>, <span class="string">"mlflow"</span>]
+
+<span class="comment"># --- Monitoring (365-day HIPAA retention) ---</span>
+<span class="variable">log_retention_days</span> = <span class="keyword">365</span>
+<span class="variable">alert_email</span>        = <span class="string">"syed.rizvi@pyxhealth.com"</span>
+
+<span class="comment"># --- Budget Thresholds ---</span>
+<span class="variable">dev_monthly_budget</span>    = <span class="keyword">800</span>
+<span class="variable">prod_monthly_budget</span>   = <span class="keyword">5000</span>
+<span class="variable">dev_daily_cost_alert</span>  = <span class="keyword">50</span>
+<span class="variable">prod_daily_cost_alert</span> = <span class="keyword">300</span>
+<span class="variable">vcpu_quota_limit</span>      = <span class="keyword">128</span></pre></div>
+      </div>
+      <div class="critical-box"><strong>You MUST change</strong> the three subscription IDs. Everything else has production-ready defaults.</div>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">3</span> Deploy (Automated Script)</h4>
+      <div class="code-block">
+        <div class="code-header"><span>PowerShell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <div class="code-content"><pre><span class="comment"># Navigate to the project</span>
+cd PYX-Databricks-Budget-Deploy
+
+<span class="comment"># Option A: Full automated deployment (recommended)</span>
+.\deploy.ps1
+
+<span class="comment"># Option B: Plan-only (review before apply)</span>
+.\deploy.ps1 -PlanOnly
+
+<span class="comment"># Option C: Manual Terraform commands</span>
+terraform init -upgrade
+terraform validate
+terraform plan -var-file=<span class="string">"terraform.tfvars"</span> -out=<span class="string">"budget.plan"</span>
+terraform apply <span class="string">"budget.plan"</span></pre></div>
+      </div>
+      <p>The deploy.ps1 script executes 7 steps automatically: prerequisite check, state backend creation, terraform init, validate, plan, apply, and output display.</p>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">4</span> Resources Created</h4>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Resource</th><th>Name</th><th>Subscription</th></tr></thead>
+          <tbody>
+            <tr><td>Resource Group (Hub)</td><td>rg-pyx-hub-network</td><td>Hub</td></tr>
+            <tr><td>Resource Group (DEV)</td><td>rg-pyx-databricks-dev</td><td>DEV</td></tr>
+            <tr><td>Resource Group (PROD)</td><td>rg-pyx-databricks-prod</td><td>PROD</td></tr>
+            <tr><td>Resource Group (Monitor)</td><td>rg-pyx-monitoring</td><td>Hub</td></tr>
+            <tr><td>VNet (Hub)</td><td>vnet-pyx-hub</td><td>Hub</td></tr>
+            <tr><td>VNet (DEV)</td><td>vnet-pyx-dev</td><td>DEV</td></tr>
+            <tr><td>VNet (PROD)</td><td>vnet-pyx-prod</td><td>PROD</td></tr>
+            <tr><td>Databricks Workspace (DEV)</td><td>dbw-pyx-dev (Standard)</td><td>DEV</td></tr>
+            <tr><td>Databricks Workspace (PROD)</td><td>dbw-pyx-prod (Premium)</td><td>PROD</td></tr>
+            <tr><td>ADLS Gen2 (DEV)</td><td>stpyxdldev (LRS)</td><td>DEV</td></tr>
+            <tr><td>ADLS Gen2 (PROD)</td><td>stpyxdlprod (GRS)</td><td>PROD</td></tr>
+            <tr><td>Key Vault (DEV)</td><td>kv-pyx-dev (Standard)</td><td>DEV</td></tr>
+            <tr><td>Key Vault (PROD)</td><td>kv-pyx-prod (Standard)</td><td>PROD</td></tr>
+            <tr><td>Log Analytics</td><td>law-pyx-platform</td><td>Hub</td></tr>
+            <tr><td>SQL Warehouse (DEV)</td><td>dev-sql-warehouse (XXSMALL)</td><td>DEV</td></tr>
+            <tr><td>SQL Warehouse (PROD)</td><td>prod-sql-warehouse (MEDIUM)</td><td>PROD</td></tr>
+            <tr><td>Cluster (DEV)</td><td>dev-interactive (Spot)</td><td>DEV</td></tr>
+            <tr><td>Cluster (PROD)</td><td>prod-etl-cluster (On-demand)</td><td>PROD</td></tr>
+            <tr><td>Private Endpoint (PROD)</td><td>pe-pyx-dbw-prod</td><td>PROD</td></tr>
+            <tr><td>Private Endpoint (PROD)</td><td>pe-pyx-adls-blob-prod</td><td>PROD</td></tr>
+            <tr><td>Private Endpoint (PROD)</td><td>pe-pyx-adls-dfs-prod</td><td>PROD</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">5</span> Verify Deployment</h4>
+      <p>Run these commands after deployment to verify all resources:</p>
+      <div class="code-block">
+        <div class="code-header"><span>Verification Commands</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <div class="code-content"><pre><span class="comment"># Show Terraform outputs</span>
+terraform output
+
+<span class="comment"># Verify workspaces</span>
+az databricks workspace list --output table
+
+<span class="comment"># Verify VNets</span>
+az network vnet list --output table
+
+<span class="comment"># Verify storage accounts</span>
+az storage account list --query <span class="string">"[?starts_with(name,'stpyx')]"</span> --output table
+
+<span class="comment"># Verify Key Vaults</span>
+az keyvault list --query <span class="string">"[?starts_with(name,'kv-pyx')]"</span> --output table
+
+<span class="comment"># Verify AD groups</span>
+az ad group list --filter <span class="string">"startswith(displayName,'pyx')"</span> --output table
+
+<span class="comment"># Verify policies</span>
+az policy assignment list --query <span class="string">"[?starts_with(name,'pol-pyx')]"</span> --output table
+
+<span class="comment"># Verify Log Analytics</span>
+az monitor log-analytics workspace list --query <span class="string">"[?starts_with(name,'law-pyx')]"</span> --output table</pre></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 8. DEPLOY: ENTERPRISE -->
+  <!-- ============================================================ -->
+  <div class="section" id="deploy-enterprise">
+    <div class="section-title"><span class="step-num">8</span> Step-by-Step Deployment &mdash; Enterprise</div>
+
+    <div class="step-card">
+      <h4><span class="num">1</span> Get the Terraform Code</h4>
+      <p>Download or clone <code>PYX-Databricks-Enterprise-Deploy</code>. It has 8 modules:</p>
+      <div class="code-block">
+        <div class="code-header"><span>Directory Structure</span></div>
+        <div class="code-content"><pre>PYX-Databricks-Enterprise-Deploy/
+  main.tf                 <span class="comment"># Root module - wires all 8 modules</span>
+  providers.tf            <span class="comment"># Provider configs (azurerm, azuread, databricks)</span>
+  variables.tf            <span class="comment"># All input variables</span>
+  terraform.tfvars        <span class="comment"># YOUR values (edit this)</span>
+  outputs.tf              <span class="comment"># Deployment outputs (includes firewall IP, metastore)</span>
+  deploy.ps1              <span class="comment"># One-click deployment script</span>
+  modules/
+    hub_network/main.tf       <span class="comment"># Firewall, Bastion, Gateway, Route Tables, Peering</span>
+    storage/main.tf           <span class="comment"># ADLS + Premium Key Vault + CMK (90-day rotation)</span>
+    databricks_dev/main.tf    <span class="comment"># DEV workspace, VNet-injected, UDR to firewall</span>
+    databricks_prod/main.tf   <span class="comment"># PROD workspace, Private Link ALL, Photon ETL</span>
+    unity_catalog/main.tf     <span class="comment"># Metastore, catalogs, schemas, grants, masking</span>
+    security/main.tf          <span class="comment"># AD groups, RBAC, Policy (deny public IP)</span>
+    monitoring/main.tf        <span class="comment"># Log Analytics, Sentinel SIEM, PagerDuty</span>
+    phi_pipeline/main.tf      <span class="comment"># PHI de-identification + validation notebooks</span></pre></div>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">2</span> Edit terraform.tfvars</h4>
+      <div class="code-block">
+        <div class="code-header"><span>terraform.tfvars (Enterprise)</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <div class="code-content"><pre><span class="comment"># ===========================================================</span>
+<span class="comment"># PYX Health - Databricks Serverless ENTERPRISE Deployment</span>
+<span class="comment"># FULL SECURITY: Firewall, Private Link, CMK, Sentinel, HITRUST</span>
+<span class="comment"># UPDATE SUBSCRIPTION IDs BEFORE DEPLOYING</span>
+<span class="comment"># ===========================================================</span>
+
+<span class="variable">hub_subscription_id</span>  = <span class="important">"REPLACE-WITH-HUB-SUBSCRIPTION-ID"</span>
+<span class="variable">dev_subscription_id</span>  = <span class="important">"REPLACE-WITH-DEV-SUBSCRIPTION-ID"</span>
+<span class="variable">prod_subscription_id</span> = <span class="important">"REPLACE-WITH-PROD-SUBSCRIPTION-ID"</span>
+
+<span class="variable">location</span>    = <span class="string">"westus2"</span>
+<span class="variable">dr_location</span> = <span class="string">"westus"</span>
+
+<span class="variable">project_prefix</span> = <span class="string">"pyx"</span>
+
+<span class="variable">tags</span> = {
+  Project    = <span class="string">"PYX-Databricks"</span>
+  ManagedBy  = <span class="string">"Terraform"</span>
+  CostCenter = <span class="string">"IT-DataPlatform"</span>
+  Owner      = <span class="string">"SyedRizvi"</span>
+}
+
+<span class="comment"># --- Network (Hub-Spoke) ---</span>
+<span class="variable">hub_vnet_cidr</span>  = <span class="string">"10.0.0.0/16"</span>
+<span class="variable">dev_vnet_cidr</span>  = <span class="string">"10.1.0.0/16"</span>
+<span class="variable">prod_vnet_cidr</span> = <span class="string">"10.2.0.0/16"</span>
+
+<span class="comment"># --- DEV (Standard SKU, Spot VMs) ---</span>
+<span class="variable">dev_cluster_node_type</span>       = <span class="string">"Standard_DS3_v2"</span>
+<span class="variable">dev_max_workers</span>             = <span class="keyword">2</span>
+<span class="variable">dev_autotermination_minutes</span> = <span class="keyword">15</span>
+<span class="variable">dev_sql_warehouse_size</span>      = <span class="string">"XXSMALL"</span>
+<span class="variable">dev_sql_auto_stop_mins</span>      = <span class="keyword">5</span>
+
+<span class="comment"># --- PROD (Premium SKU, On-demand, HIPAA) ---</span>
+<span class="variable">prod_cluster_node_type</span>       = <span class="string">"Standard_DS4_v2"</span>
+<span class="variable">prod_max_workers</span>             = <span class="keyword">8</span>
+<span class="variable">prod_autotermination_minutes</span> = <span class="keyword">30</span>
+<span class="variable">prod_sql_warehouse_size</span>      = <span class="string">"MEDIUM"</span>
+<span class="variable">prod_sql_auto_stop_mins</span>      = <span class="keyword">10</span>
+
+<span class="comment"># --- Storage (medallion) ---</span>
+<span class="variable">adls_containers</span> = [<span class="string">"bronze"</span>, <span class="string">"silver"</span>, <span class="string">"gold"</span>, <span class="string">"checkpoints"</span>, <span class="string">"mlflow"</span>]
+
+<span class="comment"># --- Monitoring (365-day HIPAA + PagerDuty) ---</span>
+<span class="variable">log_retention_days</span> = <span class="keyword">365</span>
+<span class="variable">alert_email</span>        = <span class="string">"syed.rizvi@pyxhealth.com"</span>
+<span class="variable">pagerduty_endpoint</span> = <span class="string">"https://events.pagerduty.com/integration/PLACEHOLDER/enqueue"</span>
+
+<span class="comment"># --- Budget ---</span>
+<span class="variable">dev_monthly_budget</span>  = <span class="keyword">800</span>
+<span class="variable">prod_monthly_budget</span> = <span class="keyword">5000</span>
+<span class="variable">vcpu_quota_limit</span>    = <span class="keyword">128</span></pre></div>
+      </div>
+      <div class="critical-box"><strong>You MUST change:</strong> (1) Three subscription IDs, (2) PagerDuty endpoint (or set to empty string <code>""</code> to disable).</div>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">3</span> Deploy</h4>
+      <div class="code-block">
+        <div class="code-header"><span>PowerShell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <div class="code-content"><pre><span class="comment"># Navigate to the project</span>
+cd PYX-Databricks-Enterprise-Deploy
+
+<span class="comment"># Option A: Full automated deployment</span>
+.\deploy.ps1
+
+<span class="comment"># Option B: Plan-only</span>
+.\deploy.ps1 -PlanOnly
+
+<span class="comment"># Option C: Manual Terraform commands</span>
+terraform init -upgrade
+terraform validate
+terraform plan -var-file=<span class="string">"terraform.tfvars"</span> -out=<span class="string">"enterprise.plan"</span>
+terraform apply <span class="string">"enterprise.plan"</span></pre></div>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">4</span> Additional Enterprise Resources Created</h4>
+      <p>Beyond all Budget resources, Enterprise also creates:</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Resource</th><th>Name</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Azure Firewall</td><td>fw-pyx-hub (Standard)</td><td>All egress filtering, deny-all-internet default</td></tr>
+            <tr><td>Firewall Policy</td><td>fwpol-pyx-hub</td><td>Allow Databricks CP, Azure services, package repos</td></tr>
+            <tr><td>Bastion Host</td><td>bas-pyx-hub (Standard)</td><td>Secure RDP/SSH without public IPs</td></tr>
+            <tr><td>Route Table</td><td>rt-pyx-spoke-to-fw</td><td>Force all spoke egress through firewall</td></tr>
+            <tr><td>Key Vault Key (CMK)</td><td>cmk-adls-prod</td><td>RSA-2048, 90-day auto-rotation</td></tr>
+            <tr><td>Unity Catalog Metastore</td><td>pyx-unity-metastore</td><td>Centralized data governance</td></tr>
+            <tr><td>Private Endpoint (Key Vault)</td><td>pe-pyx-kv-prod</td><td>Zero public access to Key Vault</td></tr>
+            <tr><td>Staging Cluster</td><td>prod-staging-cluster</td><td>Pre-prod validation (DS3_v2, 1-2 workers)</td></tr>
+            <tr><td>Sentinel SIEM</td><td>SecurityInsights (Log Analytics solution)</td><td>Threat detection and investigation</td></tr>
+            <tr><td>PHI De-ID Notebook</td><td>/Shared/pipelines/phi-deidentification</td><td>Bronze-to-Silver tokenization (TKN_XXXX)</td></tr>
+            <tr><td>PHI Validation Notebook</td><td>/Shared/pipelines/phi-validation-suite</td><td>Zero-PHI validation scan</td></tr>
+            <tr><td>Scheduled Job</td><td>pyx-phi-deidentification-daily</td><td>Runs at 2 AM Pacific daily</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <h4><span class="num">5</span> Enterprise Firewall Rules</h4>
+      <p>The Azure Firewall (fw-pyx-hub) is pre-configured with these rule collections:</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Priority</th><th>Rule Collection</th><th>Type</th><th>Action</th><th>Key Rules</th></tr></thead>
+          <tbody>
+            <tr><td>100</td><td>allow-databricks-control-plane</td><td>Network</td><td>Allow</td><td>Databricks CP (:443), Azure Cloud, DNS, SQL, Storage, Key Vault, Monitor</td></tr>
+            <tr><td>200</td><td>allow-package-repos</td><td>Application</td><td>Allow</td><td>pypi.org, conda.anaconda.org, *.azuredatabricks.net, *.databricks.com</td></tr>
+            <tr><td>65000</td><td>deny-all-internet</td><td>Network</td><td>Deny</td><td>0.0.0.0/0 (all protocols, all ports)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 9. TFVARS REFERENCE -->
+  <!-- ============================================================ -->
+  <div class="section" id="tfvars-reference">
+    <div class="section-title"><span class="step-num">9</span> terraform.tfvars Variable Reference</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Variable</th><th>Required Change?</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>hub_subscription_id</code></td><td><span class="badge-no" style="background:#fde8e8;color:#d13438">YES</span></td><td>-</td><td>Azure subscription for hub/shared networking</td></tr>
+          <tr><td><code>dev_subscription_id</code></td><td><span class="badge-no" style="background:#fde8e8;color:#d13438">YES</span></td><td>-</td><td>Azure subscription for DEV environment</td></tr>
+          <tr><td><code>prod_subscription_id</code></td><td><span class="badge-no" style="background:#fde8e8;color:#d13438">YES</span></td><td>-</td><td>Azure subscription for PROD environment</td></tr>
+          <tr><td><code>location</code></td><td><span class="badge-yes">No</span></td><td>westus2</td><td>Primary region</td></tr>
+          <tr><td><code>dr_location</code></td><td><span class="badge-yes">No</span></td><td>westus</td><td>DR region (GRS replication target)</td></tr>
+          <tr><td><code>project_prefix</code></td><td><span class="badge-yes">No</span></td><td>pyx</td><td>Prefix for all resource names</td></tr>
+          <tr><td><code>tags</code></td><td><span class="badge-yes">No</span></td><td>See above</td><td>Resource tags (Project, ManagedBy, CostCenter, Owner)</td></tr>
+          <tr><td><code>hub_vnet_cidr</code></td><td><span class="badge-yes">No</span></td><td>10.0.0.0/16</td><td>Hub VNet address space</td></tr>
+          <tr><td><code>dev_vnet_cidr</code></td><td><span class="badge-yes">No</span></td><td>10.1.0.0/16</td><td>DEV spoke VNet address space</td></tr>
+          <tr><td><code>prod_vnet_cidr</code></td><td><span class="badge-yes">No</span></td><td>10.2.0.0/16</td><td>PROD spoke VNet address space</td></tr>
+          <tr><td><code>dev_cluster_node_type</code></td><td><span class="badge-yes">No</span></td><td>Standard_DS3_v2</td><td>DEV cluster VM size (4 vCPU, 14 GB)</td></tr>
+          <tr><td><code>dev_max_workers</code></td><td><span class="badge-yes">No</span></td><td>2</td><td>DEV cluster max autoscale workers</td></tr>
+          <tr><td><code>dev_autotermination_minutes</code></td><td><span class="badge-yes">No</span></td><td>15</td><td>DEV cluster idle shutdown (minutes)</td></tr>
+          <tr><td><code>dev_sql_warehouse_size</code></td><td><span class="badge-yes">No</span></td><td>XXSMALL</td><td>DEV SQL warehouse T-shirt size</td></tr>
+          <tr><td><code>dev_sql_auto_stop_mins</code></td><td><span class="badge-yes">No</span></td><td>5</td><td>DEV SQL warehouse idle shutdown (minutes)</td></tr>
+          <tr><td><code>prod_cluster_node_type</code></td><td><span class="badge-yes">No</span></td><td>Standard_DS4_v2</td><td>PROD ETL cluster VM size (8 vCPU, 28 GB)</td></tr>
+          <tr><td><code>prod_max_workers</code></td><td><span class="badge-yes">No</span></td><td>8</td><td>PROD ETL cluster max autoscale workers</td></tr>
+          <tr><td><code>prod_autotermination_minutes</code></td><td><span class="badge-yes">No</span></td><td>30</td><td>PROD cluster idle shutdown (minutes)</td></tr>
+          <tr><td><code>prod_sql_warehouse_size</code></td><td><span class="badge-yes">No</span></td><td>MEDIUM</td><td>PROD SQL warehouse T-shirt size</td></tr>
+          <tr><td><code>prod_sql_auto_stop_mins</code></td><td><span class="badge-yes">No</span></td><td>10</td><td>PROD SQL warehouse idle shutdown (minutes)</td></tr>
+          <tr><td><code>adls_containers</code></td><td><span class="badge-yes">No</span></td><td>[bronze, silver, gold, checkpoints, mlflow]</td><td>ADLS Gen2 containers to create</td></tr>
+          <tr><td><code>log_retention_days</code></td><td><span class="badge-yes">No</span></td><td>365</td><td>Log Analytics retention (365 = HIPAA requirement)</td></tr>
+          <tr><td><code>alert_email</code></td><td><span class="badge-yes">No</span></td><td>syed.rizvi@pyxhealth.com</td><td>Email for alert notifications</td></tr>
+          <tr><td><code>pagerduty_endpoint</code></td><td>Enterprise only</td><td>PLACEHOLDER</td><td>PagerDuty webhook URL (set "" to disable)</td></tr>
+          <tr><td><code>dev_monthly_budget</code></td><td><span class="badge-yes">No</span></td><td>800</td><td>DEV Azure cost budget per month ($)</td></tr>
+          <tr><td><code>prod_monthly_budget</code></td><td><span class="badge-yes">No</span></td><td>5000</td><td>PROD Azure cost budget per month ($)</td></tr>
+          <tr><td><code>vcpu_quota_limit</code></td><td><span class="badge-yes">No</span></td><td>128</td><td>vCPU quota limit reference for alerting</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 10. SECURITY CONTROLS MATRIX -->
+  <!-- ============================================================ -->
+  <div class="section" id="security-matrix">
+    <div class="section-title"><span class="step-num">10</span> Security Controls Matrix</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Category</th><th>Control</th><th>Budget</th><th>Enterprise</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="5"><strong>Network</strong></td>
+            <td>Network Security Groups (NSGs)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Azure Firewall (egress filtering)</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Standard</span></td></tr>
+          <tr><td>Private Link / Private Endpoints</td><td>PROD only</td><td><span class="badge-yes">All services</span></td></tr>
+          <tr><td>No Public IP (PROD workspace)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>UDR (force through Firewall)</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td rowspan="4"><strong>Identity</strong></td>
+            <td>6 Azure AD Security Groups</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>3 Service Principals</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Role-Based Access Control (RBAC)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Login Anomaly Detection</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">5+ failures/10min</span></td></tr>
+          <tr><td rowspan="4"><strong>Encryption</strong></td>
+            <td>TLS 1.2 minimum</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Storage Service Encryption (SSE)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Customer-Managed Keys (CMK)</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">RSA-2048, 90-day</span></td></tr>
+          <tr><td>Key Vault Premium (HSM-backed)</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td rowspan="3"><strong>Data Access</strong></td>
+            <td>Unity Catalog (data governance)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Column Masking (PHI)</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">mask_ssn, mask_dob, etc.</span></td></tr>
+          <tr><td>Row-Level Security (RLS)</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td rowspan="3"><strong>Policy</strong></td>
+            <td>Allowed Locations (West US 2, West US)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Required Tags (Environment)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes + Owner</span></td></tr>
+          <tr><td>Deny Public IP</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Subscription-level</span></td></tr>
+          <tr><td rowspan="4"><strong>Monitoring</strong></td>
+            <td>Log Analytics (365-day)</td><td><span class="badge-yes">Yes</span></td><td><span class="badge-yes">Yes</span></td></tr>
+          <tr><td>Alert Rules</td><td>4 rules</td><td>6 rules</td></tr>
+          <tr><td>Sentinel SIEM</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Active</span></td></tr>
+          <tr><td>PagerDuty Integration</td><td><span class="badge-no">No</span></td><td><span class="badge-yes">Webhook</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 11. RBAC & PERMISSIONS MATRIX -->
+  <!-- ============================================================ -->
+  <div class="section" id="rbac-matrix">
+    <div class="section-title"><span class="step-num">11</span> RBAC & Permissions Matrix</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>AD Group</th><th>ADLS Storage</th><th>DEV Workspace</th><th>PROD Workspace</th><th>Key Vault</th><th>Unity Catalog (PROD)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>pyx-databricks-admins</strong><br><small>Full platform admin</small></td>
+            <td>-</td>
+            <td>Contributor</td>
+            <td>Contributor</td>
+            <td>Administrator</td>
+            <td>USE_CATALOG, USE_SCHEMA, SELECT, MODIFY, CREATE_TABLE, CREATE_FUNCTION, CREATE_SCHEMA</td>
+          </tr>
+          <tr>
+            <td><strong>pyx-data-engineers</strong><br><small>Pipeline management</small></td>
+            <td>Blob Data Contributor (DEV + PROD)</td>
+            <td>Contributor</td>
+            <td>Reader [E]</td>
+            <td>Secrets User [E]</td>
+            <td>Bronze + Silver: full access<br>Gold: SELECT, MODIFY, CREATE_TABLE</td>
+          </tr>
+          <tr>
+            <td><strong>pyx-data-scientists</strong><br><small>ML model development</small></td>
+            <td>Blob Data Contributor (DEV)<br>Blob Data Reader (PROD)</td>
+            <td>Contributor [E]</td>
+            <td>-</td>
+            <td>-</td>
+            <td>Silver (masked) + Gold: SELECT only</td>
+          </tr>
+          <tr>
+            <td><strong>pyx-business-analysts</strong><br><small>Gold layer read-only</small></td>
+            <td>Blob Data Reader (PROD)</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>Gold only: USE_SCHEMA, SELECT</td>
+          </tr>
+          <tr>
+            <td><strong>pyx-devops</strong><br><small>CI/CD and infrastructure</small></td>
+            <td>-</td>
+            <td>Contributor</td>
+            <td>Contributor</td>
+            <td>-</td>
+            <td>-</td>
+          </tr>
+          <tr>
+            <td><strong>pyx-auditors</strong><br><small>Compliance read-only</small></td>
+            <td>-</td>
+            <td>-</td>
+            <td>Reader</td>
+            <td>Reader [E]</td>
+            <td>USE_CATALOG, USE_SCHEMA (metadata only)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="info-box"><strong>[E]</strong> = Enterprise deployment only. Budget deployment includes a subset of these assignments.</div>
+
+    <h4 style="margin-top: 20px;">Service Principals</h4>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Service Principal</th><th>Purpose</th><th>Key Vault Role</th><th>Storage Role</th></tr></thead>
+        <tbody>
+          <tr><td>pyx-databricks-automation</td><td>Workspace automation and management</td><td>Crypto Officer</td><td>-</td></tr>
+          <tr><td>pyx-adls-access</td><td>ADLS Gen2 data lake access</td><td>-</td><td>Blob Data Contributor (PROD)</td></tr>
+          <tr><td>pyx-cicd-pipeline</td><td>CI/CD pipeline deployments</td><td>-</td><td>Blob Data Contributor (PROD) [E]</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 12. UNITY CATALOG SETUP -->
+  <!-- ============================================================ -->
+  <div class="section" id="unity-catalog">
+    <div class="section-title"><span class="step-num">12</span> Unity Catalog Setup</div>
+
+    <div class="card">
+      <h4>Catalog & Schema Structure</h4>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Metastore</th><th>Catalog</th><th>Schema</th><th>Description</th><th>Access</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="6"><strong>pyx-unity-metastore</strong><br>West US 2<br>Storage: abfss://mlflow@stpyxdlprod.dfs.core.windows.net/unity-catalog</td>
+              <td rowspan="3"><strong>pyx_dev</strong></td>
+              <td>bronze</td><td>Raw ingested data (synthetic, no PHI)</td><td>Engineers: full</td></tr>
+            <tr><td>silver</td><td>Cleaned data (DEV)</td><td>Engineers: full</td></tr>
+            <tr><td>gold</td><td>Analytics-ready data (DEV)</td><td>Engineers: full</td></tr>
+            <tr><td rowspan="3"><strong>pyx_prod</strong></td>
+              <td>bronze</td><td>Raw PHI data &mdash; AES-256 CMK encrypted, 365-day retention</td><td>Engineers only</td></tr>
+            <tr><td>silver</td><td>De-identified data &mdash; tokenized PHI (TKN_XXXX), column masking</td><td>Engineers + Scientists (masked)</td></tr>
+            <tr><td>gold</td><td>Analytics-ready &mdash; ZERO PHI, Business Analyst read-only</td><td>All roles (read-only for analysts)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <button class="collapsible-toggle" onclick="toggleCollapsible(this)">Column Masking Functions (Enterprise Only)</button>
+      <div class="collapsible-body">
+        <p>The Enterprise deployment includes PHI de-identification functions applied to the Silver layer:</p>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Function</th><th>Input Example</th><th>Output Example</th><th>Method</th></tr></thead>
+            <tbody>
+              <tr><td>generate_token (SSN)</td><td>123-45-6789</td><td>TKN_A1B2C3</td><td>SHA-256 hash, first 6 chars</td></tr>
+              <tr><td>generate_token (MRN)</td><td>MRN-0012345</td><td>TKN_D4E5F6</td><td>SHA-256 hash, first 6 chars</td></tr>
+              <tr><td>generate_token (Name)</td><td>Jane Smith</td><td>TKN_7G8H9I</td><td>SHA-256 hash, first 6 chars</td></tr>
+              <tr><td>age_bucket (DOB)</td><td>1985-03-15</td><td>40-44</td><td>5-year age range buckets</td></tr>
+              <tr><td>truncate_zip (ZIP)</td><td>75068</td><td>750XX</td><td>3-digit prefix + XX</td></tr>
+              <tr><td>phone (removed)</td><td>(555) 123-4567</td><td>NULL</td><td>Complete removal</td></tr>
+              <tr><td>email (removed)</td><td>jane@email.com</td><td>NULL</td><td>Complete removal</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="margin-top: 12px;">The PHI de-identification pipeline runs daily at <strong>2:00 AM Pacific</strong> and includes a validation suite that scans for SSN, phone, and email patterns to ensure zero PHI leakage in Silver and Gold layers.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 13. SERVERLESS HITRUST -->
+  <!-- ============================================================ -->
+  <div class="section" id="hitrust">
+    <div class="section-title"><span class="step-num">13</span> Serverless HITRUST Compliance</div>
+
+    <div class="card">
+      <h4>Databricks Serverless HITRUST &mdash; Available April 24, 2026</h4>
+      <p>Databricks has confirmed that Serverless Compute in Azure will achieve HITRUST CSF v11.2 certification as of <strong>April 24, 2026</strong>. This is a critical milestone for PYX Health's compliance posture:</p>
+      <br>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Aspect</th><th>Detail</th></tr></thead>
+          <tbody>
+            <tr><td><strong>What it covers</strong></td><td>Serverless SQL Warehouses and Serverless Compute (Jobs, Interactive) running in Azure West US 2</td></tr>
+            <tr><td><strong>When available</strong></td><td>April 24, 2026 (confirmed by Tony Schlak via Databricks)</td></tr>
+            <tr><td><strong>Why it matters</strong></td><td>PYX Health processes PHI for HIPAA-covered entities. HITRUST certification provides the highest level of assurance that Databricks' serverless infrastructure meets healthcare security standards</td></tr>
+            <tr><td><strong>How to enable</strong></td><td>Set <code>enable_serverless_compute = true</code> on SQL warehouses (already configured in both deployments). After April 24, Databricks account admin enables the HIPAA Compliance Security Profile in workspace settings</td></tr>
+            <tr><td><strong>Our readiness</strong></td><td>PROD workspace (dbw-pyx-prod) uses Premium SKU with <code>public_network_access_enabled = false</code>, <code>no_public_ip = true</code>, and VNet injection. Serverless SQL warehouses are tagged with <code>Compliance = "HIPAA-HITRUST"</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="success-box"><strong>Action item:</strong> After April 24, 2026 &mdash; navigate to the PROD workspace Admin Console, enable the HIPAA Compliance Security Profile, and verify the HITRUST badge appears on Serverless SQL Warehouses.</div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 14. COST ANALYSIS -->
+  <!-- ============================================================ -->
+  <div class="section" id="cost-analysis">
+    <div class="section-title"><span class="step-num">14</span> Cost Analysis</div>
+
+    <h4>Budget Deployment</h4>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Environment</th><th>Monthly Budget</th><th>Projected Spend</th><th>Key Cost Drivers</th></tr></thead>
+        <tbody>
+          <tr><td><strong>DEV</strong></td><td>$800/mo</td><td>~$440/mo</td><td>Spot VMs (80% savings), XXSMALL SQL warehouse, 15min auto-stop, LRS storage</td></tr>
+          <tr><td><strong>PROD</strong></td><td>$5,000/mo</td><td>~$2,880/mo</td><td>On-demand ETL (2-8 workers), MEDIUM SQL warehouse, GRS storage, Private Endpoints</td></tr>
+          <tr><td><strong>Hub/Shared</strong></td><td>-</td><td>~$180/mo</td><td>Log Analytics (PerGB2018, 365-day), VNet Peering</td></tr>
+          <tr style="background: #f0f6ff;"><td><strong>TOTAL</strong></td><td><strong>$5,800/mo</strong></td><td><strong>~$3,500/mo</strong></td><td><strong>$42,000/yr projected | $69,600/yr budget cap</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="margin-top: 20px;">Enterprise Deployment (Additional Costs)</h4>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Enterprise Add-On</th><th>Estimated Monthly Cost</th></tr></thead>
+        <tbody>
+          <tr><td>Azure Firewall (Standard SKU)</td><td>~$900/mo</td></tr>
+          <tr><td>Azure Bastion (Standard SKU)</td><td>~$140/mo</td></tr>
+          <tr><td>Premium Key Vault (HSM-backed)</td><td>~$15/mo</td></tr>
+          <tr><td>Sentinel SIEM (Log Analytics ingestion)</td><td>~$100/mo</td></tr>
+          <tr><td>Additional Private Endpoints (Key Vault PE)</td><td>~$10/mo</td></tr>
+          <tr><td>Staging Cluster (DS3_v2, intermittent)</td><td>~$50/mo</td></tr>
+          <tr><td>Photon Runtime Premium (PROD)</td><td>~$100/mo</td></tr>
+          <tr style="background: #f3e8ff;"><td><strong>Enterprise Total Additional</strong></td><td><strong>~$1,315/mo</strong></td></tr>
+          <tr style="background: #f0f6ff;"><td><strong>Enterprise Grand Total</strong></td><td><strong>~$7,200/mo | ~$86,400/yr</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="success-box"><strong>Cost Savings vs Traditional:</strong> Serverless compute eliminates always-on cluster costs. Spot VMs in DEV save ~80% vs on-demand. Auto-stop on SQL warehouses prevents idle spend. Estimated 40-60% savings compared to traditional VNet-injected clusters running 24/7.</div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 15. POST-DEPLOYMENT VERIFICATION -->
+  <!-- ============================================================ -->
+  <div class="section" id="verification">
+    <div class="section-title"><span class="step-num">15</span> Post-Deployment Verification</div>
+
+    <div class="code-block">
+      <div class="code-header"><span>Complete Verification Script</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <div class="code-content"><pre><span class="comment"># =========================================================</span>
+<span class="comment"># PYX Health - Post-Deployment Verification Commands</span>
+<span class="comment"># Run after terraform apply completes successfully</span>
+<span class="comment"># =========================================================</span>
+
+<span class="comment"># 1. List Databricks workspaces</span>
+az databricks workspace list --output table
+
+<span class="comment"># 2. Verify VNets and subnets</span>
+az network vnet list --output table
+az network vnet subnet list --resource-group rg-pyx-databricks-dev --vnet-name vnet-pyx-dev --output table
+az network vnet subnet list --resource-group rg-pyx-databricks-prod --vnet-name vnet-pyx-prod --output table
+
+<span class="comment"># 3. Verify VNet peering status</span>
+az network vnet peering list --resource-group rg-pyx-hub-network --vnet-name vnet-pyx-hub --output table
+
+<span class="comment"># 4. Verify storage accounts</span>
+az storage account list --query <span class="string">"[?starts_with(name,'stpyx')].[name,location,primaryEndpoints.dfs]"</span> --output table
+
+<span class="comment"># 5. Verify Key Vaults</span>
+az keyvault list --query <span class="string">"[?starts_with(name,'kv-pyx')].[name,properties.sku.name,properties.enablePurgeProtection]"</span> --output table
+
+<span class="comment"># 6. Verify AD groups</span>
+az ad group list --filter <span class="string">"startswith(displayName,'pyx')"</span> --query <span class="string">"[].{Name:displayName,ID:id}"</span> --output table
+
+<span class="comment"># 7. Verify Azure Policy assignments</span>
+az policy assignment list --query <span class="string">"[?starts_with(name,'pol-pyx')].[name,displayName]"</span> --output table
+
+<span class="comment"># 8. Verify Log Analytics workspace</span>
+az monitor log-analytics workspace list --query <span class="string">"[?starts_with(name,'law-pyx')].[name,retentionInDays,sku.name]"</span> --output table
+
+<span class="comment"># 9. Verify NSGs</span>
+az network nsg list --query <span class="string">"[?starts_with(name,'nsg-pyx')].[name,resourceGroup]"</span> --output table
+
+<span class="comment"># 10. Verify Private Endpoints (PROD)</span>
+az network private-endpoint list --query <span class="string">"[?starts_with(name,'pe-pyx')].[name,privateLinkServiceConnections[0].groupIds[0]]"</span> --output table
+
+<span class="comment"># 11. [Enterprise] Verify Firewall</span>
+az network firewall list --query <span class="string">"[?starts_with(name,'fw-pyx')].[name,ipConfigurations[0].privateIpAddress]"</span> --output table
+
+<span class="comment"># 12. [Enterprise] Verify Bastion</span>
+az network bastion list --query <span class="string">"[?starts_with(name,'bas-pyx')].[name,sku.name]"</span> --output table
+
+<span class="comment"># 13. Verify Terraform state</span>
+terraform state list | wc -l
+terraform output</pre></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 16. ROLLBACK -->
+  <!-- ============================================================ -->
+  <div class="section" id="rollback">
+    <div class="section-title"><span class="step-num">16</span> Rollback Procedure</div>
+
+    <div class="warn-box"><strong>Caution:</strong> Rollback will destroy ALL deployed resources. This is safe because this is a NEW deployment &mdash; existing workspaces (pyx-warehouse-prod, pyxlake-databricks) on sub-corp-prod-001 are completely separate and unaffected.</div>
+
+    <div class="code-block">
+      <div class="code-header"><span>Rollback Commands</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <div class="code-content"><pre><span class="comment"># Option A: Using deploy.ps1 (with safety confirmation)</span>
+.\deploy.ps1 -Destroy
+<span class="comment"># Type YES-DESTROY when prompted</span>
+
+<span class="comment"># Option B: Manual terraform destroy</span>
+cd PYX-Databricks-Budget-Deploy   <span class="comment"># or Enterprise-Deploy</span>
+terraform destroy -var-file=<span class="string">"terraform.tfvars"</span>
+<span class="comment"># Type 'yes' when prompted</span>
+
+<span class="comment"># Verify all resources are gone</span>
+az group list --query <span class="string">"[?starts_with(name,'rg-pyx')].[name]"</span> --output table
+<span class="comment"># Should return empty (except rg-pyx-terraform-state which holds the state)</span>
+
+<span class="comment"># Optionally remove state backend</span>
+<span class="comment"># az group delete --name rg-pyx-terraform-state --yes</span></pre></div>
+    </div>
+
+    <div class="info-box"><strong>Note:</strong> Key Vault with purge protection enabled (PROD) will enter a soft-deleted state for 90 days. You can purge it manually via <code>az keyvault purge --name kv-pyx-prod</code> if needed. The Enterprise Key Vault (Premium) has <code>purge_soft_delete_on_destroy = false</code> set in the provider configuration to prevent accidental data loss.</div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 17. TEAM RESPONSIBILITIES -->
+  <!-- ============================================================ -->
+  <div class="section" id="responsibilities">
+    <div class="section-title"><span class="step-num">17</span> Team Responsibilities</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Team Member</th><th>Role</th><th>Responsibilities</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Syed Rizvi</strong></td>
+            <td>Infrastructure Engineering</td>
+            <td>Deploy Terraform infrastructure, security configuration, Key Vault setup, RBAC assignment, network validation, monitoring configuration, HITRUST enablement</td>
+          </tr>
+          <tr>
+            <td><strong>John</strong></td>
+            <td>Pipeline Testing</td>
+            <td>Test data pipelines in DEV workspace, validate Bronze/Silver/Gold flow, verify ETL cluster performance, test SQL warehouse queries</td>
+          </tr>
+          <tr>
+            <td><strong>Labi</strong></td>
+            <td>Data Validation</td>
+            <td>Verify data integrity across medallion layers, validate Bronze ingestion accuracy, Silver de-identification quality, Gold analytics readiness</td>
+          </tr>
+          <tr>
+            <td><strong>Tony Schlak</strong></td>
+            <td>Approval & Compliance</td>
+            <td>Final approval for production deployment, HITRUST verification after April 24 enablement, budget sign-off, vendor coordination</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 18. TIMELINE -->
+  <!-- ============================================================ -->
+  <div class="section" id="timeline">
+    <div class="section-title"><span class="step-num">18</span> Deployment Timeline</div>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="week-badge">WEEK 1 &mdash; Day 1</div>
+        <h4>Deploy Infrastructure (30 min automated)</h4>
+        <p>Run deploy.ps1 with correct subscription IDs. All 40+ Azure resources created automatically via Terraform. Verify outputs and connectivity.</p>
+      </div>
+      <div class="timeline-item">
+        <div class="week-badge">WEEK 1 &mdash; Days 2-5</div>
+        <h4>Configure & Verify</h4>
+        <p>Assign users to AD groups. Verify VNet peering, NSG rules, Private Endpoints. Test workspace connectivity. Configure Unity Catalog user assignments. Run verification commands.</p>
+      </div>
+      <div class="timeline-item">
+        <div class="week-badge">WEEK 2</div>
+        <h4>Data Pipeline Testing</h4>
+        <p>John + Labi: Test data ingestion into Bronze layer. Validate Silver de-identification (Enterprise). Verify Gold analytics layer. Test SQL warehouse performance. Run PHI validation suite.</p>
+      </div>
+      <div class="timeline-item">
+        <div class="week-badge">WEEK 3 &mdash; After April 24</div>
+        <h4>Security Validation & HITRUST Enablement</h4>
+        <p>Enable HIPAA Compliance Security Profile on PROD workspace. Verify HITRUST badge on Serverless SQL Warehouses. Run security audit: NSG rules, Firewall logs, Key Vault access. Validate all alerts fire correctly.</p>
+      </div>
+      <div class="timeline-item">
+        <div class="week-badge">WEEK 4</div>
+        <h4>Production Go-Live</h4>
+        <p>Tony Schlak final approval. Production data pipeline activation. Team onboarding to new workspaces. Decommission plan for legacy workspaces (separate process, not part of this deployment).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <p><strong>PYX Health</strong> &nbsp;|&nbsp; Prepared by Syed Rizvi &nbsp;|&nbsp; Infrastructure Engineering &nbsp;|&nbsp; April 2026</p>
+    <p>Databricks Serverless Deployment Guide &nbsp;|&nbsp; West US 2 (Primary) / West US (DR)</p>
+    <div class="critical-note">
+      This is a NEW deployment &mdash; not a migration. Existing workspaces (pyx-warehouse-prod, pyxlake-databricks) on sub-corp-prod-001 remain completely untouched.
+    </div>
+  </div>
+
+</div><!-- end main-content -->
+
+<script>
+  // Copy code to clipboard
+  function copyCode(btn) {
+    const codeBlock = btn.closest('.code-block');
+    const codeContent = codeBlock.querySelector('.code-content pre');
+    const text = codeContent.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  }
+
+  // Toggle collapsible sections
+  function toggleCollapsible(btn) {
+    btn.classList.toggle('active');
+    const body = btn.nextElementSibling;
+    body.classList.toggle('active');
+  }
+
+  // Sidebar active state on scroll
+  const sections = document.querySelectorAll('.section');
+  const tocLinks = document.querySelectorAll('.toc-list a');
+
+  function highlightTOC() {
+    let current = '';
+    sections.forEach(section => {
+      const sectionTop = section.offsetTop;
+      if (window.pageYOffset >= sectionTop - 100) {
+        current = section.getAttribute('id');
+      }
+    });
+    tocLinks.forEach(link => {
+      link.classList.remove('active');
+      if (link.getAttribute('href') === '#' + current) {
+        link.classList.add('active');
+      }
+    });
+  }
+
+  window.addEventListener('scroll', highlightTOC);
+  highlightTOC();
+</script>
+
+</body>
+</html>
