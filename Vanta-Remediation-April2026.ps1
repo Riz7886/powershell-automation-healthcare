@@ -771,7 +771,7 @@ foreach ($sub in $allSubscriptions) {
             elseif (-not $AuditOnly) {
                 try {
                     $nsgName = "nsg-$vmName"
-                    Write-Host "    VM $vmName: Creating NSG '$nsgName'..." -ForegroundColor Yellow
+                    Write-Host "    VM ${vmName}: Creating NSG '${nsgName}'..." -ForegroundColor Yellow
 
                     $sshRule = New-AzNetworkSecurityRuleConfig -Name "Allow-SSH-VNet-Only" `
                         -Description "Allow SSH from VNet only" `
@@ -794,19 +794,19 @@ foreach ($sub in $allSubscriptions) {
                     $nic.NetworkSecurityGroup = $nsg
                     Set-AzNetworkInterface -NetworkInterface $nic | Out-Null
 
-                    Write-Host "    VM $vmName: NSG '$nsgName' created and attached" -ForegroundColor Green
+                    Write-Host "    VM ${vmName}: NSG '${nsgName}' created and attached" -ForegroundColor Green
                     Add-Result -Environment $matchedEnv -Subscription $subName -ResourceGroup $rg -ResourceName $vmName `
                         -ResourceType "Virtual Machine" -TestCategory "Network Security" -CheckType "NSG Attached" `
                         -Status "FIXED" -Details "Created and attached NSG '$nsgName'"
                 } catch {
-                    Write-Host "    VM $vmName: NSG fix failed" -ForegroundColor Red
+                    Write-Host "    VM ${vmName}: NSG fix failed" -ForegroundColor Red
                     Add-Result -Environment $matchedEnv -Subscription $subName -ResourceGroup $rg -ResourceName $vmName `
                         -ResourceType "Virtual Machine" -TestCategory "Network Security" -CheckType "NSG Attached" `
                         -Status "FAILED" -Details "Error: $($_.Exception.Message)"
                 }
             }
             else {
-                Write-Host "    VM $vmName: NO NSG attached (audit)" -ForegroundColor Red
+                Write-Host "    VM ${vmName}: NO NSG attached (audit)" -ForegroundColor Red
                 Add-Result -Environment $matchedEnv -Subscription $subName -ResourceGroup $rg -ResourceName $vmName `
                     -ResourceType "Virtual Machine" -TestCategory "Network Security" -CheckType "NSG Attached" `
                     -Status "NEEDS_FIX" -Details "No NSG attached to NIC"
