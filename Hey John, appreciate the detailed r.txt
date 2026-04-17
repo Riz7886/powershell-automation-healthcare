@@ -1,0 +1,15 @@
+Hey John, appreciate the detailed requirements — that's exactly the kind of rigor I'd expect from us. I passed this along to them and here's where they stand:
+
+US Based — they're a US LLC, platform runs 100% on Microsoft Azure US regions, no offshore processing.
+
+Cybersecurity Liability Insurance — they carry a $2M General Liability policy and are adding Cyber/E&O coverage.
+
+HIPAA Compliant — built specifically for healthcare orgs. Encryption at rest AES-256 and in transit TLS 1.2+. They provide a signed BAA as part of onboarding.
+
+Compliance Audit — this is actually their bread and butter. Their platform automates evidence collection across HITRUST, SOC 2, HIPAA, PCI-DSS, NIST — about 247 controls mapped across 9 frameworks. Think Vanta but with AI agents that actually scan your Azure environment and generate the evidence packages automatically.
+
+3rd Party Assessor Integration — they export evidence in formats that map directly to Control Case, A-LIGN, Coalfire etc. The whole point is to cut the prep time before an assessor engagement from months to weeks.
+
+On SOC 2 Type 2 and HITRUST r2 — to be transparent, the company itself is early stage so they don't carry their own SOC 2/HITRUST certs yet. But the platform is purpose-built to help orgs like us achieve and maintain those certifications. They run on Azure which carries both SOC 2 and HITRUST, and their agents map every control to evidence you can hand directly to an assessor.
+
+Happy to connect them with Tony and Jeremy for a 30-minute demo whenever works. They can show exactly how it would plug into our environment and what the evidence output looks like. Want me to set something up?
