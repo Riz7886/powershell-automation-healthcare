@@ -1,0 +1,8 @@
+# 1. Go to the folder
+cd C:\Users\PC\Downloads\pyx-fx-survey-migration
+
+# 2. Log into PYX Azure (browser opens)
+az login
+
+# 3. Generate HTML change-plan for Tony (no changes made)
+.\migrate.ps1 -DryRun -HtmlReport
