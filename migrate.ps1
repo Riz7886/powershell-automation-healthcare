@@ -52,12 +52,15 @@ function Confirm-Action($prompt) {
 }
 
 function Invoke-Az {
-    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Args)
-    $cmdText = "az " + ($Args -join " ")
+    # NOTE: intentionally NO param() block. Using the automatic $args variable
+    # so PowerShell does not try to bind names like -o / --resource-group to
+    # this function's cmdlet-common parameters (which caused "ambiguous
+    # parameter -o" errors against -OutVariable / -OutBuffer).
+    $cmdText = "az " + ($args -join " ")
     if ($Show -or $DryRun) { Write-Host "  `$ $cmdText" -ForegroundColor Magenta }
     if ($HtmlReport) { [void]$Script:PlannedCommands.Add($cmdText) }
     if ($DryRun) { return "" }
-    & az @Args
+    & az @args
     if ($LASTEXITCODE -ne 0) {
         Warn "az command returned exit code $LASTEXITCODE : $cmdText"
     }
