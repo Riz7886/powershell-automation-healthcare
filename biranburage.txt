@@ -1,0 +1,28 @@
+Brian, network + firewall both confirmed fine:
+ - nc shows TCP 1433 open to pyx-qa
+ - Azure SQL firewall has Allow-All-Azure-Services ON
+ - Your cluster reaches the server fine
+
+The "TCP/IP connection failed" error from JDBC is misleading — when
+network checks pass like yours just did, it actually means your code
+is failing at TLS or AUTH, not at the network.
+
+Check these 3 things in your spark.read builder:
+
+1. Are you passing the AAD token to JDBC?
+   .option("accessToken", token)      <-- this line MUST be there.
+   Without it, JDBC falls back to SQL auth (user/pass) and fails.
+
+2. Is the token being acquired? Right after get_token add:
+   print(f"token len={len(token)} first10={token[:10]}")
+   If it prints, good. If it errors, the service principal secret is
+   wrong/expired.
+
+3. Does your service principal have DB access? Connect to DBAppAetna
+   as a SQL admin and run:
+   CREATE USER [<sp-name>] FROM EXTERNAL PROVIDER
+   ALTER ROLE db_datareader ADD MEMBER [<sp-name>]
+   ALTER ROLE db_datawriter ADD MEMBER [<sp-name>]
+
+Paste your full spark.read block here (mask the secret) and I'll point
+at the exact line that's wrong.
