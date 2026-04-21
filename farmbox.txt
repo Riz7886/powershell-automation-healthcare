@@ -1,0 +1,38 @@
+Great catch, Tony — that's not just a note, that's a live clock.
+
+Translating what Azure is showing:
+
+  - Managed certs on hipyx EXPIRED April 14 (a week ago).
+    We have until April 30 before Azure triggers service
+    disruption. Nine days.
+  - Classic Front Door is being retired March 31, 2027.
+    We have to migrate to Standard or Premium regardless.
+
+Both of those warnings point to the SAME fix, and it also
+happens to solve John's FX survey problem in one move:
+
+  1. Migrate hipyx from Classic -> Front Door Standard
+     (Azure Portal has a built-in migration wizard;
+     takes 30-90 min, near-zero downtime if done right).
+
+  2. On the new Standard profile, add survey.farmboxrx.com
+     as a custom domain pointing at the Static Web App
+     origin (mycareloop.z22.web.core.windows.net).
+
+  3. Azure auto-provisions a NEW managed cert for
+     survey.farmboxrx.com — no BYO Farmbox cert needed,
+     kills the Cloudflare BYO-cert workaround.
+
+  4. Attach WAF policy (included in Standard) in detection
+     mode for launch week, flip to prevention after.
+
+  5. Robert does the Passport2.html branding swap in parallel.
+
+Net result: hipyx is off the expiry clock, FX survey gets a
+clean custom domain + fresh managed cert, and we're off the
+classic retirement track two years before the cutoff.
+
+I can drive the migration + custom-domain setup today.
+Do you + John want me to schedule 60-90 min this afternoon?
+
+Syed
