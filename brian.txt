@@ -1,0 +1,5 @@
+%sh
+echo "--- DNS ---"
+nslookup pyx-qa.database.windows.net
+echo "--- TCP ---"
+nc -zv pyx-qa.database.windows.net 1433
