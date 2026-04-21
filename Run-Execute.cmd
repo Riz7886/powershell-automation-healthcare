@@ -1,25 +1,25 @@
 @echo off
 REM ============================================================
-REM  Databricks -> SQL whitelist fix — EXECUTE (modifies Azure)
-REM  Double-click only AFTER Run-DryRun.cmd output looks right.
-REM  Removes the old IP rule 'burge-20260421' and swaps in
-REM  subnet-based VNet firewall rules.
+REM  EXECUTE — whitelists AzureDatabricks IP ranges on SQL Server
+REM  Also removes the obsolete burge-20260421 IP rule.
+REM  Safe to re-run (idempotent).
 REM ============================================================
 cd /d "%~dp0"
+set AZURE_CORE_LOGIN_EXPERIENCE_V2=Off
 
 echo.
 echo ============================================================
-echo  ABOUT TO MODIFY AZURE (SQL Server firewall + subnets)
-echo  Press CTRL-C to cancel, or any key to proceed...
+echo  ABOUT TO MODIFY AZURE firewall on sql-qa-datasystems.
+echo  Press CTRL-C to cancel, or any key to proceed.
 echo ============================================================
 pause
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File ".\Fix-Databricks-SQL-Whitelist.ps1" -SqlServerName "sql-qa-datasystems" -RemoveIpRuleName "burge-20260421" -Execute
+pwsh -NoProfile -ExecutionPolicy Bypass -File ".\Fix-Databricks-SQL-Access.ps1" -SqlServerName "sql-qa-datasystems" -RemoveOldRules "burge-20260421" -Execute
 
 echo.
 echo ============================================================
-echo  DONE. Test from a Databricks notebook:
-echo      %%sql  SELECT 1
-echo  Then restart the cluster and test again.
+echo  DONE. From now on, any Databricks cluster (restart, scale,
+echo  new cluster) in westus/westus2/centralus can reach the SQL
+echo  server. No per-cluster whitelisting ever again.
 echo ============================================================
 pause

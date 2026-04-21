@@ -1,13 +1,12 @@
 @echo off
 REM ============================================================
-REM  Databricks -> SQL whitelist fix — DRY RUN (safe, no changes)
-REM  Double-click to run. Shows what the real fix would do.
+REM  DRY RUN — shows what would be whitelisted, changes NOTHING
 REM ============================================================
 cd /d "%~dp0"
-pwsh -NoProfile -ExecutionPolicy Bypass -File ".\Fix-Databricks-SQL-Whitelist.ps1" -SqlServerName "sql-qa-datasystems"
+set AZURE_CORE_LOGIN_EXPERIENCE_V2=Off
+pwsh -NoProfile -ExecutionPolicy Bypass -File ".\Fix-Databricks-SQL-Access.ps1" -SqlServerName "sql-qa-datasystems"
 echo.
 echo ============================================================
-echo  DRY-RUN DONE. If it looked right, double-click:
-echo     Run-Execute.cmd
+echo  DRY-RUN DONE. If it looks right, double-click Run-Execute.cmd
 echo ============================================================
 pause
