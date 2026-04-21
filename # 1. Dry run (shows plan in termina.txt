@@ -1,0 +1,9 @@
+# 1. Dry run (shows plan in terminal, no changes)
+bash ".\migrate.sh" --dry-run
+
+# 2. HTML change-plan (generates a styled HTML file to send for sign-off)
+bash ".\migrate.sh" --html-report
+# creates: pyx-fx-migration-plan-<timestamp>.html
+
+# 3. Real run (prompts y/N before each step)
+bash ".\migrate.sh"
