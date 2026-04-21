@@ -1,0 +1,14 @@
+Hey Brian,
+
+Firewall on pyx-qa is fully open to Azure services — verified. Cluster IP
+changes don't matter for connectivity. If the notebook still fails,
+paste this ONE cell in your Databricks notebook, run it, and send me
+the output:
+
+%sh
+nslookup pyx-qa.database.windows.net
+nc -zv pyx-qa.database.windows.net 1433
+
+That tells us exactly what's blocking. No more firewall changes needed.
+
+Thanks
