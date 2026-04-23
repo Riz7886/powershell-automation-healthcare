@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cert Manager + AutoHeal - Run Anywhere Reference</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI','SF Pro Display',Arial,sans-serif; margin: 0; padding: 0; background: #0b0f16; color: #e6edf3; line-height: 1.55; }
+header { background: linear-gradient(135deg,#0a6efd,#6f42c1); padding: 28px 40px; border-bottom: 1px solid #30363d; }
+header h1 { margin: 0; font-size: 28px; color: #fff; }
+header p { margin: 6px 0 0; color: #dbe4ff; font-size: 14px; }
+nav { background: #161b22; padding: 10px 40px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #30363d; }
+nav a { color: #58a6ff; text-decoration: none; margin-right: 18px; font-size: 13px; }
+nav a:hover { text-decoration: underline; }
+main { max-width: 1200px; margin: 0 auto; padding: 30px 40px; }
+h2 { color: #79c0ff; border-bottom: 1px solid #30363d; padding-bottom: 8px; margin-top: 40px; font-size: 22px; }
+h3 { color: #a5d6ff; font-size: 17px; margin-top: 28px; }
+h4 { color: #f0883e; font-size: 15px; margin-top: 22px; margin-bottom: 6px; }
+code { background: #161b22; color: #d2a8ff; padding: 2px 6px; border-radius: 3px; font-family: 'Consolas','Monaco',monospace; font-size: 13px; }
+pre { background: #0d1117; border: 1px solid #30363d; padding: 14px 16px; border-radius: 6px; overflow-x: auto; margin: 10px 0; }
+pre code { background: transparent; color: #a5d6ff; padding: 0; font-size: 13px; white-space: pre; }
+.cmd { border-left: 3px solid #3fb950; }
+.warn { border-left: 3px solid #f0883e; background: #1a1408; }
+.danger { border-left: 3px solid #f85149; background: #1a0808; }
+.info { border-left: 3px solid #58a6ff; background: #0a1420; }
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13px; }
+th, td { border: 1px solid #30363d; padding: 8px 12px; text-align: left; vertical-align: top; }
+th { background: #161b22; color: #79c0ff; }
+tr:nth-child(even) { background: #0d1117; }
+.step { background: #0d1117; border: 1px solid #30363d; border-left: 4px solid #3fb950; padding: 14px 18px; margin: 14px 0; border-radius: 4px; }
+.step-num { color: #3fb950; font-weight: bold; font-size: 16px; display: inline-block; margin-right: 10px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-right: 6px; }
+.tag-azure { background: #0a6efd; color: #fff; }
+.tag-aws { background: #ff9900; color: #000; }
+.tag-gcp { background: #4285f4; color: #fff; }
+.tag-onprem { background: #888; color: #000; }
+.tag-all { background: #9333ea; color: #fff; }
+.kbd { background: #21262d; border: 1px solid #30363d; border-radius: 3px; padding: 1px 6px; font-family: monospace; font-size: 12px; }
+ul { padding-left: 22px; }
+li { margin: 4px 0; }
+.toc { background: #161b22; border: 1px solid #30363d; padding: 18px; border-radius: 6px; margin: 20px 0; }
+.toc ul { columns: 2; -webkit-columns: 2; -moz-columns: 2; }
+.copy { float: right; cursor: pointer; color: #8b949e; font-size: 11px; user-select: none; }
+.copy:hover { color: #58a6ff; }
+summary { cursor: pointer; color: #58a6ff; font-weight: 600; padding: 8px 0; }
+details { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 8px 14px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<header>
+<h1>SAP Cert Manager + AutoHeal - Run Anywhere Reference</h1>
+<p>Every command, every environment. Windows on-prem, Azure, AWS, GCP, hybrid. No missed steps.</p>
+</header>
+<nav>
+<a href="#prereqs">Prereqs</a>
+<a href="#tomorrow">Tomorrow (ns2otpapp)</a>
+<a href="#cert">Cert Manager</a>
+<a href="#autoheal">AutoHeal</a>
+<a href="#passwords">Passwords / rpmsg</a>
+<a href="#azure">Azure</a>
+<a href="#aws">AWS</a>
+<a href="#gcp">GCP</a>
+<a href="#onprem">On-Prem</a>
+<a href="#scheduled">Scheduled</a>
+<a href="#troubleshoot">Troubleshooting</a>
+</nav>
+
+<main>
+
+<div class="toc">
+<strong>Contents</strong>
+<ul>
+<li><a href="#prereqs">1. Prereqs (one-time)</a></li>
+<li><a href="#tomorrow">2. Tomorrow - ns2otpapp 4/26</a></li>
+<li><a href="#cert">3. Cert Manager - All Commands</a></li>
+<li><a href="#autoheal">4. AutoHeal - All Commands</a></li>
+<li><a href="#passwords">5. Locked passwords &amp; rpmsg</a></li>
+<li><a href="#azure">6. Azure VM targets</a></li>
+<li><a href="#aws">7. AWS EC2 targets</a></li>
+<li><a href="#gcp">8. GCP Compute targets</a></li>
+<li><a href="#onprem">9. On-prem / domain-joined</a></li>
+<li><a href="#multicloud">10. Multi-cloud fleet</a></li>
+<li><a href="#scheduled">11. Scheduled / nightly</a></li>
+<li><a href="#troubleshoot">12. Troubleshooting</a></li>
+<li><a href="#exitcodes">13. Exit codes &amp; return objects</a></li>
+</ul>
+</div>
+
+<h2 id="prereqs">1. Prereqs (one-time on any jump server)</h2>
+
+<div class="step"><span class="step-num">STEP 1</span> Open PowerShell as Administrator on your jump server</div>
+
+<pre class="cmd"><code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
+Install-Module PowerShellGet -Force -Scope CurrentUser -AllowClobber
+Install-Module Az.Accounts,Az.KeyVault,Az.Compute -Scope CurrentUser -Force -AllowClobber
+Install-Module AWS.Tools.EC2,AWS.Tools.SimpleSystemsManagement -Scope CurrentUser -Force -AllowClobber
+</code></pre>
+
+<div class="step"><span class="step-num">STEP 2</span> Copy the scripts to the jump server (pick one)</div>
+
+<pre class="cmd"><code># Option A - copy from a network share
+robocopy \\fileshare\tools\SAP-Cert-Manager C:\Tools\SAP-Cert-Manager /MIR
+robocopy \\fileshare\tools\AutoHeal C:\Tools\AutoHeal /MIR
+cd C:\Tools\SAP-Cert-Manager
+
+# Option B - scripts already on your own machine
+$env:Path = 'C:\Users\PC\Downloads\SAP-Cert-Manager;C:\Users\PC\Downloads\AutoHeal;' + $env:Path
+
+# Verify either way
+Get-ChildItem .\Update-ServerCert.ps1
+Get-ChildItem .\examples\Renew-Ns2otpapp.ps1</code></pre>
+
+<div class="step"><span class="step-num">STEP 3</span> Get your credential object once per session</div>
+
+<pre class="cmd"><code>$cred = Get-Credential   # enter DOMAIN\username + password
+# or for local admin
+$cred = Get-Credential -UserName '.\Administrator'</code></pre>
+
+<div class="step"><span class="step-num">STEP 4</span> Prove connectivity to a target before running anything heavy</div>
+
+<pre class="cmd"><code>Test-WSMan -ComputerName ns2otpapp -Credential $cred -Authentication Default
+# If that fails, try:
+Test-WSMan -ComputerName 10.168.0.32 -Credential $cred -Authentication Default
+# Confirm you can open a session
+Enter-PSSession -ComputerName ns2otpapp -Credential $cred
+exit</code></pre>
+
+<h2 id="tomorrow">2. Tomorrow 4/26/2026 - ns2otpapp Cert Renewal</h2>
+
+<div class="info step"><strong>What's happening</strong>: Cert <code>CN=ns2otpapp.sap.parker.corp</code> expires 4/26/2026. Parker Hannifin General Issuing CA v2 issues the replacement. Script runs from your jump server over WinRM.</div>
+
+<div class="step"><span class="step-num">STEP 1</span> Open PowerShell, set credential</div>
+
+<pre class="cmd"><code>cd C:\Users\PC\Downloads\SAP-Cert-Manager
+$cred = Get-Credential</code></pre>
+
+<div class="step"><span class="step-num">STEP 2</span> Discover what's on the server (zero changes)</div>
+
+<pre class="cmd"><code>.\examples\Renew-Ns2otpapp.ps1 -Credential $cred -DiscoverOnly</code></pre>
+
+<p>You'll see a table like:</p>
+<pre><code>Index Host        Source       Status    DaysRemaining  Subject                         Thumbprint
+----- ----------- -----------  --------- -------------  -------------------------------- --------------
+1     ns2otpapp   WindowsStore EXPIRING  3              CN=ns2otpapp.sap.parker.corp     AABBCC...
+2     ns2otpapp   IisBinding   EXPIRING  3              CN=ns2otpapp.sap.parker.corp     AABBCC...</code></pre>
+
+<div class="step"><span class="step-num">STEP 3</span> Pick the fastest path based on what Step 2 shows</div>
+
+<h4>Path A: Cert lives in Windows Store</h4>
+<pre class="cmd"><code>.\examples\Renew-Ns2otpapp.ps1 -Credential $cred</code></pre>
+
+<h4>Path B: Cert is a SAP PSE file (STRUST)</h4>
+<pre class="cmd"><code>.\examples\Renew-Ns2otpapp.ps1 -Credential $cred -SapPsePin '<the-pse-pin>'
+# OR prompt for PSE pin
+.\examples\Renew-Ns2otpapp.ps1 -Credential $cred -PromptForPasswords</code></pre>
+
+<h4>Path C: Cert is a PFX file on disk</h4>
+<pre class="cmd"><code>.\examples\Renew-Ns2otpapp.ps1 -Credential $cred -PfxPassword '<pfx-password>'
+# OR prompt for PFX password
+.\examples\Renew-Ns2otpapp.ps1 -Credential $cred -PromptForPasswords</code></pre>
+
+<div class="step"><span class="step-num">STEP 4</span> Verify after the renewal</div>
+
+<pre class="cmd"><code>.\Update-ServerCert.ps1 -Target ns2otpapp -Credential $cred -Action Verify -Scope All</code></pre>
+
+<div class="warn step">If anything fails, run <code>.\Update-ServerCert.ps1 -Target ns2otpapp -Credential $cred -Action Rollback</code> and call your PKI team.</div>
+
+<h2 id="cert">3. Cert Manager - Every Command</h2>
+
+<h3>3.1 Discovery</h3>
+
+<pre class="cmd"><code># Everything on a host
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Discover -Scope All
+
+# Windows stores only
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Discover -Scope WindowsStore
+
+# IIS bindings
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Discover -Scope IisBinding
+
+# PFX files on disk (scans C/D/E/F drives, common cert paths)
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Discover -Scope PfxFile -PfxPassword 'p@ss'
+
+# SAP PSE files (E:\OTC, usr/sap, Program Files\SAP, etc.)
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Discover -Scope SapPse -SapPsePin 'pin'
+
+# Azure Key Vault certs
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Discover -Scope AzureKv -KeyVaultName myvault
+
+# Multiple targets at once
+.\Update-ServerCert.ps1 -Target server01,server02,10.0.0.5 -Credential $cred -Action Discover -Scope All</code></pre>
+
+<h3>3.2 Renewal</h3>
+
+<pre class="cmd"><code># By subject substring
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew -Scope WindowsStore `
+    -SubjectLike 'www.example.com' -ServiceName 'W3SVC'
+
+# By exact thumbprint
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew -Scope WindowsStore `
+    -Thumbprint AABBCC112233...  -ServiceName 'W3SVC'
+
+# Any cert expiring within 45 days
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action RenewAuto `
+    -ExpiryThresholdDays 45 -NonInteractive -Force
+
+# Override subject + SANs
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew -Scope WindowsStore `
+    -Thumbprint AABBCC... `
+    -SubjectOverride 'CN=api.example.com,O=Example,C=US' `
+    -DnsNames 'api.example.com','api-alt.example.com' `
+    -KeySize 2048
+
+# SAP PSE renewal
+.\Update-ServerCert.ps1 -Target sapserver -Credential $cred -Action Renew -Scope SapPse `
+    -SapPsePath 'E:\usr\sap\PP4\D00\sec\SAPSSLS.pse' `
+    -SapGenPsePath 'E:\usr\sap\PP4\SYS\exe\uc\NTAMD64\sapgenpse.exe' `
+    -SapPsePin 'pin' `
+    -ServiceName 'SAPPP4_00'
+
+# PFX file renewal
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew -Scope PfxFile `
+    -PfxPath 'E:\OTC\OpenText\cert.pfx' -PfxPassword 'p@ss'
+
+# Force a specific CA instead of AD auto-discovery
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Thumbprint AABBCC... `
+    -CaConfig 'ca01.parker.corp\Parker Hannifin General Issuing CA v2' `
+    -CaTemplate WebServer
+
+# Fleet-wide nightly renewal of expiring certs
+.\Update-ServerCert.ps1 -Target (Get-Content .\server-list.txt) -Credential $cred `
+    -Action RenewAuto -Scope WindowsStore -ExpiryThresholdDays 30 `
+    -NonInteractive -Force -SkipRestart</code></pre>
+
+<h3>3.3 Verification / Rollback</h3>
+
+<pre class="cmd"><code># Chain-validate all certs on a host
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Verify -Scope All
+
+# Show the latest backup set (does not restore automatically)
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Rollback</code></pre>
+
+<h3>3.4 Dry-run</h3>
+
+<pre class="cmd"><code># Plan only, no changes
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Thumbprint AABBCC... -DryRun</code></pre>
+
+<h2 id="autoheal">4. AutoHeal - Every Command</h2>
+
+<h3>4.1 Diagnose only</h3>
+
+<pre class="cmd"><code>cd C:\Users\PC\Downloads\AutoHeal
+
+# Full scan, all modules, dry-run
+.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Diagnose
+
+# Scan a subset of modules
+.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Diagnose `
+    -Modules Service,Disk,Network,TimeSync
+
+# Filter to severity
+.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Diagnose `
+    -Severity Critical,High
+
+# Scan a fleet, generate HTML + JSON report
+.\Invoke-AutoHeal.ps1 -Target (Get-Content .\servers.txt) -Credential $cred -Mode Report</code></pre>
+
+<h3>4.2 Heal (apply fixes)</h3>
+
+<pre class="cmd"><code># Interactive heal - shows plan and prompts yes/no/selected
+.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Heal -ApplyFixes
+
+# Heal only critical+high auto-fixable findings, still interactive
+.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Heal -ApplyFixes `
+    -Severity Critical,High
+
+# Hands-off heal (no prompts, continues past 3 failures)
+.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Heal -ApplyFixes `
+    -AutoApprove -NonInteractive -Force
+
+# Heal specific module only
+.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Heal -ApplyFixes `
+    -Modules Service,Disk -AutoApprove
+
+# Fleet heal
+.\Invoke-AutoHeal.ps1 -Target (Get-Content .\servers.txt) -Credential $cred -Mode Heal -ApplyFixes `
+    -Severity Critical,High -AutoApprove -NonInteractive</code></pre>
+
+<h3>4.3 Rollback guidance</h3>
+
+<pre class="cmd"><code>.\Invoke-AutoHeal.ps1 -Target server01 -Credential $cred -Mode Rollback</code></pre>
+
+<h2 id="passwords">5. Locked passwords &amp; rpmsg attachments</h2>
+
+<h3>5.1 Opening a <code>message_v2.rpmsg</code> (Rights Managed Email)</h3>
+
+<div class="step"><span class="step-num">STEP 1</span> Do NOT rely on Outlook's preview pane - rpmsg cannot be previewed.</div>
+<div class="step"><span class="step-num">STEP 2</span> <strong>Double-click the attachment</strong> - Outlook opens it in a new window if your signed-in identity is authorized.</div>
+<div class="step"><span class="step-num">STEP 3</span> If blocked: go to <code>https://outlook.office.com</code>, find the same email, double-click there. OWA handles rpmsg natively.</div>
+<div class="step"><span class="step-num">STEP 4</span> Still blocked: install <a href="https://www.microsoft.com/en-us/download/details.aspx?id=49028">Azure Information Protection Viewer</a>.</div>
+<div class="step"><span class="step-num">STEP 5</span> Still blocked: reply to the sender asking them to grant access to your exact email, or forward without "Do Not Forward".</div>
+
+<h3>5.2 Five ways to supply the password to the cert script</h3>
+
+<h4>Option 1 - Interactive prompt</h4>
+<pre class="cmd"><code>.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'E:\cert.pfx' -PromptForPasswords</code></pre>
+
+<h4>Option 2 - Save once, DPAPI-encrypted, reuse forever</h4>
+<pre class="cmd"><code># First run: prompts then saves
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'E:\cert.pfx' -PromptForPasswords -SavePasswords
+# Subsequent runs: no prompt needed
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'E:\cert.pfx'
+# Delete a saved secret
+Remove-Item "$HOME\.cert-secrets\pfx-cert.xml"</code></pre>
+
+<h4>Option 3 - SecureString in script</h4>
+<pre class="cmd"><code>$sec = Read-Host -AsSecureString -Prompt 'PFX password'
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'E:\cert.pfx' -PfxPassword $sec</code></pre>
+
+<h4>Option 4 - Azure Key Vault</h4>
+<pre class="cmd"><code>Connect-AzAccount
+.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'E:\cert.pfx' `
+    -KeyVaultName corp-kv-secrets `
+    -KvSecretNamePfx 'ns2otpapp-pfx-password' `
+    -KvSecretNamePse 'ns2otpapp-pse-pin'</code></pre>
+
+<h4>Option 5 - Plaintext (lab only)</h4>
+<pre class="cmd"><code>.\Update-ServerCert.ps1 -Target server01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'E:\cert.pfx' -PfxPassword 'p@ss'</code></pre>
+
+<div class="info step">Resolve order: provided -&gt; saved DPAPI file -&gt; Key Vault -&gt; interactive prompt -&gt; fail.</div>
+
+<h2 id="azure">6. <span class="tag tag-azure">AZURE</span> Azure VM targets</h2>
+
+<h3>6.1 Target an Azure VM via WinRM (same as on-prem)</h3>
+
+<pre class="cmd"><code>$cred = Get-Credential    # Azure admin credential
+# Ensure NSG allows 5985/5986 from your jump host
+# Ensure VM has WinRM enabled: Invoke-AzVMRunCommand ... -CommandId 'EnableRemotePS'
+.\Update-ServerCert.ps1 -Target azvm01.contoso.internal -Credential $cred -Action Discover -Scope All
+.\Invoke-AutoHeal.ps1 -Target azvm01.contoso.internal -Credential $cred -Mode Diagnose</code></pre>
+
+<h3>6.2 Target via Azure RunCommand (no direct WinRM needed)</h3>
+
+<pre class="cmd"><code>Connect-AzAccount
+$script = Get-Content 'C:\Users\PC\Downloads\AutoHeal\Invoke-AutoHeal.ps1' -Raw
+Invoke-AzVMRunCommand -ResourceGroupName rg-prod -VMName azvm01 `
+    -CommandId 'RunPowerShellScript' -ScriptString $script `
+    -Parameter @{ Target='localhost'; Mode='Diagnose' }</code></pre>
+
+<h3>6.3 Store cert passwords in Azure Key Vault</h3>
+
+<pre class="cmd"><code>Connect-AzAccount
+$sec = Read-Host -AsSecureString -Prompt 'PFX password'
+Set-AzKeyVaultSecret -VaultName corp-kv-secrets -Name 'azvm01-pfx-password' -SecretValue $sec
+
+# Then:
+.\Update-ServerCert.ps1 -Target azvm01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'C:\app\cert.pfx' `
+    -KeyVaultName corp-kv-secrets -KvSecretNamePfx 'azvm01-pfx-password'</code></pre>
+
+<h3>6.4 Azure Key Vault cert renewal</h3>
+
+<pre class="cmd"><code># List certs in the vault
+.\Update-ServerCert.ps1 -Target localhost -Credential $cred -Action Discover -Scope AzureKv -KeyVaultName corp-kv-certs
+
+# Import a freshly-signed PFX into Key Vault
+.\Update-ServerCert.ps1 -Target localhost -Credential $cred -Action Renew -Scope AzureKv `
+    -KeyVaultName corp-kv-certs -KvCertName 'app-tls' `
+    -PfxPath 'C:\new.pfx' -PfxPassword 'p@ss'</code></pre>
+
+<h3>6.5 Fleet-wide Azure VM sweep</h3>
+
+<pre class="cmd"><code>Connect-AzAccount
+$vms = (Get-AzVM | Where-Object { $_.OSProfile.WindowsConfiguration }).Name
+.\Invoke-AutoHeal.ps1 -Target $vms -Credential $cred -Mode Heal -ApplyFixes `
+    -Severity Critical,High -AutoApprove -NonInteractive</code></pre>
+
+<h2 id="aws">7. <span class="tag tag-aws">AWS</span> AWS EC2 targets</h2>
+
+<h3>7.1 Via WinRM (direct)</h3>
+
+<pre class="cmd"><code>Set-AWSCredential -AccessKey AKIA... -SecretKey ... -StoreAs default
+Initialize-AWSDefaults -Region us-east-1
+
+# Get password for EC2 Windows instance
+Get-EC2PasswordData -InstanceId i-0abc -PemFile .\key.pem
+
+$cred = Get-Credential -UserName 'Administrator'
+.\Update-ServerCert.ps1 -Target ec2-54-12-34-56.compute-1.amazonaws.com -Credential $cred `
+    -Action Discover -Scope All
+.\Invoke-AutoHeal.ps1 -Target ec2-54-12-34-56.compute-1.amazonaws.com -Credential $cred -Mode Diagnose</code></pre>
+
+<h3>7.2 Via AWS Systems Manager Run Command (no WinRM)</h3>
+
+<pre class="cmd"><code>Set-AWSCredential -ProfileName default
+$doc = 'AWS-RunPowerShellScript'
+$script = Get-Content 'C:\Users\PC\Downloads\AutoHeal\Invoke-AutoHeal.ps1' -Raw
+Send-SSMCommand -DocumentName $doc -InstanceId i-0abc `
+    -Parameter @{ commands = @($script + "`n`nInvoke-AutoHeal -Target localhost -Mode Diagnose") }</code></pre>
+
+<h3>7.3 Store secrets in AWS Secrets Manager (wrap a call)</h3>
+
+<pre class="cmd"><code>$pfxPw = (Get-SECSecretValue -SecretId 'ns2otpapp/pfx').SecretString
+$sec = ConvertTo-SecureString -String $pfxPw -AsPlainText -Force
+.\Update-ServerCert.ps1 -Target ec2-host -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'C:\cert.pfx' -PfxPassword $sec</code></pre>
+
+<h3>7.4 Fleet EC2 sweep</h3>
+
+<pre class="cmd"><code>$ids = (Get-EC2Instance).Instances | Where-Object { $_.Platform -eq 'windows' -and $_.State.Name -eq 'running' } | Select-Object -ExpandProperty InstanceId
+foreach ($id in $ids) {
+    $ip = (Get-EC2Instance -InstanceId $id).Instances[0].PrivateDnsName
+    .\Invoke-AutoHeal.ps1 -Target $ip -Credential $cred -Mode Heal -ApplyFixes `
+        -Severity Critical,High -AutoApprove -NonInteractive
+}</code></pre>
+
+<h2 id="gcp">8. <span class="tag tag-gcp">GCP</span> GCP Compute targets</h2>
+
+<h3>8.1 Via WinRM</h3>
+
+<pre class="cmd"><code># Reset Windows password on a GCP Windows VM
+gcloud compute reset-windows-password vm-01 --zone us-central1-a --user admin
+
+$cred = Get-Credential -UserName 'admin'
+.\Update-ServerCert.ps1 -Target vm-01.c.myproj.internal -Credential $cred `
+    -Action Discover -Scope All</code></pre>
+
+<h3>8.2 Via gcloud SSH/SSM equivalent (no WinRM)</h3>
+
+<pre class="cmd"><code># Copy script, then invoke via start-up metadata or cloud init
+gcloud compute scp 'C:\Users\PC\Downloads\AutoHeal\Invoke-AutoHeal.ps1' vm-01:C:\temp\ --zone us-central1-a
+gcloud compute ssh vm-01 --zone us-central1-a --command 'powershell -File C:\temp\Invoke-AutoHeal.ps1 -Target localhost -Mode Diagnose'</code></pre>
+
+<h3>8.3 Store secrets in GCP Secret Manager</h3>
+
+<pre class="cmd"><code>gcloud secrets versions access latest --secret=pfx-password | Out-String | Set-Variable -Name pfxPw
+$sec = ConvertTo-SecureString -String $pfxPw -AsPlainText -Force
+.\Update-ServerCert.ps1 -Target vm-01 -Credential $cred -Action Renew `
+    -Scope PfxFile -PfxPath 'C:\cert.pfx' -PfxPassword $sec</code></pre>
+
+<h3>8.4 Fleet GCP sweep</h3>
+
+<pre class="cmd"><code>$vms = gcloud compute instances list --filter="status=RUNNING AND disks.licenses:windows" --format='value(name)'
+foreach ($vm in $vms) {
+    .\Invoke-AutoHeal.ps1 -Target "$vm.c.myproj.internal" -Credential $cred -Mode Heal -ApplyFixes `
+        -Severity Critical,High -AutoApprove -NonInteractive
+}</code></pre>
+
+<h2 id="onprem">9. <span class="tag tag-onprem">ON-PREM</span> On-prem / domain-joined</h2>
+
+<h3>9.1 Single server</h3>
+
+<pre class="cmd"><code>.\Update-ServerCert.ps1 -Target ns2otpapp -Credential $cred -Action Discover -Scope All
+.\Invoke-AutoHeal.ps1 -Target ns2otpapp -Credential $cred -Mode Diagnose</code></pre>
+
+<h3>9.2 By IP (when DNS unreliable)</h3>
+
+<pre class="cmd"><code>Set-Item WSMan:\localhost\Client\TrustedHosts -Value '10.168.0.32,10.168.2.22' -Force -Concatenate
+.\Update-ServerCert.ps1 -Target 10.168.0.32,10.168.2.22 -Credential $cred -Action Discover -Scope All</code></pre>
+
+<h3>9.3 Entire OU (Active Directory)</h3>
+
+<pre class="cmd"><code>Import-Module ActiveDirectory
+$servers = (Get-ADComputer -SearchBase 'OU=SAP,DC=parker,DC=corp' -Filter *).Name
+.\Invoke-AutoHeal.ps1 -Target $servers -Credential $cred -Mode Diagnose</code></pre>
+
+<h2 id="multicloud">10. Hybrid / multi-cloud fleet sweep</h2>
+
+<pre class="cmd"><code>$azureVms = (Get-AzVM).Name
+$awsEc2 = (Get-EC2Instance).Instances | Where-Object { $_.Platform -eq 'windows' } | ForEach-Object { $_.PrivateDnsName }
+$gcpVms  = gcloud compute instances list --filter="status=RUNNING" --format='value(name)'
+$onprem  = Get-Content .\onprem-servers.txt
+
+$all = $azureVms + $awsEc2 + $gcpVms + $onprem | Where-Object { $_ }
+.\Invoke-AutoHeal.ps1 -Target $all -Credential $cred -Mode Heal -ApplyFixes `
+    -Severity Critical,High -AutoApprove -NonInteractive</code></pre>
+
+<h2 id="scheduled">11. Scheduled / nightly runs</h2>
+
+<h3>11.1 Nightly AutoHeal on jump server</h3>
+
+<pre class="cmd"><code>$action = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument @'
+-NoProfile -File "C:\Users\PC\Downloads\AutoHeal\Invoke-AutoHeal.ps1" -Target (Get-Content C:\ops\servers.txt) -Mode Heal -ApplyFixes -AutoApprove -NonInteractive -Severity Critical,High
+'@
+$trigger = New-ScheduledTaskTrigger -Daily -At 2am
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+Register-ScheduledTask -TaskName 'AutoHeal-Nightly' -Action $action -Trigger $trigger -Principal $principal</code></pre>
+
+<h3>11.2 Weekly cert expiry check + auto-renew</h3>
+
+<pre class="cmd"><code>$action = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument @'
+-NoProfile -File "C:\Users\PC\Downloads\SAP-Cert-Manager\Update-ServerCert.ps1" -Target (Get-Content C:\ops\servers.txt) -Action RenewAuto -Scope WindowsStore -ExpiryThresholdDays 30 -NonInteractive -Force
+'@
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 1am
+Register-ScheduledTask -TaskName 'CertAutoRenew-Weekly' -Action $action -Trigger $trigger -User 'SYSTEM' -RunLevel Highest</code></pre>
+
+<h3>11.3 Azure Automation Runbook wrapper</h3>
+
+<pre class="cmd"><code># Upload scripts as Runbook Assets, then wrap:
+param([string[]]$Target)
+$scripts = Get-AutomationVariable -Name 'CertManagerScript'
+& $scripts -Target $Target -Action RenewAuto -Scope WindowsStore `
+    -ExpiryThresholdDays 30 -NonInteractive -Force</code></pre>
+
+<h2 id="troubleshoot">12. Troubleshooting</h2>
+
+<table>
+<tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+<tr><td><code>Cannot open PSSession</code></td><td>WinRM disabled / firewall / wrong creds</td><td>On target: <code>winrm quickconfig</code>, open 5985/5986, re-test with <code>Test-WSMan</code></td></tr>
+<tr><td><code>Access denied</code> on WinRM</td><td>Not in local admin group / UAC filter</td><td>Use a domain admin or local administrator; if using non-admin, grant DCOM+WMI rights</td></tr>
+<tr><td><code>TrustedHosts not set</code></td><td>Targeting by IP, not hostname</td><td><code>Set-Item WSMan:\localhost\Client\TrustedHosts -Value '10.0.0.*' -Force -Concatenate</code></td></tr>
+<tr><td><code>No ADCS Enterprise CA found</code></td><td>AD auto-discovery blocked</td><td>Pass <code>-CaConfig "caserver\CA Name"</code> explicitly</td></tr>
+<tr><td><code>certreq -submit exit 5</code></td><td>Template not authorized</td><td>Ask PKI team to grant Enroll on the template to the computer's AD object</td></tr>
+<tr><td><code>sapgenpse.exe not found</code></td><td>SAP bin path non-standard</td><td>Pass <code>-SapGenPsePath 'E:\usr\sap\PP4\SYS\exe\uc\NTAMD64\sapgenpse.exe'</code></td></tr>
+<tr><td><code>Service not found</code> after fix</td><td>Wrong service name in <code>-ServiceName</code></td><td>Use Discover first, find exact service Name field</td></tr>
+<tr><td>PFX export fails "file in use"</td><td>App has the PFX locked</td><td>Stop the service first, rerun without <code>-SkipRestart</code></td></tr>
+<tr><td>rpmsg won't open</td><td>Identity not authorized by sender</td><td>See section 5.1; ask sender to re-authorize your email</td></tr>
+<tr><td>Az module install fails</td><td>TLS 1.0 / old PowerShellGet</td><td><code>[Net.ServicePointManager]::SecurityProtocol = 'Tls12'</code> then retry</td></tr>
+<tr><td>AutoHeal scans but finds nothing</td><td>Credential lacks WMI rights</td><td>Use domain admin or grant WMI namespace rights</td></tr>
+<tr><td>AutoHeal "Failed" 3x and stopped</td><td>Transient target issue</td><td>Re-run with <code>-Force</code> to continue past threshold</td></tr>
+</table>
+
+<h2 id="exitcodes">13. Exit codes, return objects, log locations</h2>
+
+<h3>13.1 Log locations</h3>
+
+<pre class="info"><code>Cert Manager:   C:\Users\PC\Downloads\SAP-Cert-Manager\logs\cert-&lt;runId&gt;.log
+                C:\Users\PC\Downloads\SAP-Cert-Manager\backups\&lt;runId&gt;\
+
+AutoHeal:       C:\Users\PC\Downloads\AutoHeal\logs\autoheal-&lt;runId&gt;.log
+                C:\Users\PC\Downloads\AutoHeal\backups\&lt;runId&gt;\&lt;host&gt;\&lt;tag&gt;\
+                C:\Users\PC\Downloads\AutoHeal\reports\&lt;runId&gt;\report.html + report.json
+
+Remote staging: &lt;target&gt;:C:\Temp\CertRenew\  (CSRs, signed .cer, PFX backups)
+
+DPAPI secrets:  $HOME\.cert-secrets\pfx-&lt;name&gt;.xml
+                $HOME\.cert-secrets\pse-&lt;name&gt;.xml</code></pre>
+
+<h3>13.2 Exit codes</h3>
+
+<table>
+<tr><th>Code</th><th>Meaning</th></tr>
+<tr><td>0</td><td>Success or Discover-only complete</td></tr>
+<tr><td>1</td><td>Terminating error (re-throw via <code>$ErrorActionPreference='Stop'</code>)</td></tr>
+<tr><td>Non-zero from <code>-Action Renew</code></td><td>At least one renewal failed, but <code>-Force</code> was not set</td></tr>
+</table>
+
+<h3>13.3 AutoHeal finding object schema</h3>
+
+<pre><code>@{
+  Id              = 'SVC-STOPPED-MSDTC'
+  Category        = 'Service'
+  Severity        = 'High'
+  TargetHost      = 'server01'
+  Title           = '...'
+  Description     = '...'
+  AutoFixable     = $true
+  Risk            = 'Low'
+  RequiresReboot  = $false
+  Evidence        = @{ Name='MSDTC'; ... }
+  Remediation     = 'Start-Service MSDTC'
+  Module          = 'Service'
+  Priority        = 80
+  DiscoveredAt    = [datetime]
+  Status          = 'New' | 'Fixing' | 'Success' | 'Failed' | 'Skipped' | 'DryRun'
+  FixResult       = @{ Status; Message; Evidence; BackupPath; RollbackHint; CompletedAt }
+}</code></pre>
+
+<h2>Full end-to-end walkthrough (most comprehensive)</h2>
+
+<div class="step"><span class="step-num">1</span> Open admin PowerShell on jump server</div>
+<div class="step"><span class="step-num">2</span> <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code></div>
+<div class="step"><span class="step-num">3</span> <code>$cred = Get-Credential</code></div>
+<div class="step"><span class="step-num">4</span> <code>Test-WSMan -ComputerName ns2otpapp -Credential $cred</code></div>
+<div class="step"><span class="step-num">5</span> <code>cd C:\Users\PC\Downloads\SAP-Cert-Manager</code></div>
+<div class="step"><span class="step-num">6</span> <code>.\Update-ServerCert.ps1 -Target ns2otpapp -Credential $cred -Action Discover -Scope All</code></div>
+<div class="step"><span class="step-num">7</span> Note the thumbprint or source type of the expiring cert</div>
+<div class="step"><span class="step-num">8</span> <code>.\examples\Renew-Ns2otpapp.ps1 -Credential $cred -DiscoverOnly</code></div>
+<div class="step"><span class="step-num">9</span> <code>.\examples\Renew-Ns2otpapp.ps1 -Credential $cred -PromptForPasswords -SavePasswords</code></div>
+<div class="step"><span class="step-num">10</span> Watch the log stream - CSR generation, CA auto-discovery, submit, accept, install, service restart</div>
+<div class="step"><span class="step-num">11</span> <code>.\Update-ServerCert.ps1 -Target ns2otpapp -Credential $cred -Action Verify -Scope All</code></div>
+<div class="step"><span class="step-num">12</span> Confirm new cert's <code>NotAfter</code> is 1 year out and chain builds OK</div>
+<div class="step"><span class="step-num">13</span> <code>cd C:\Users\PC\Downloads\AutoHeal</code></div>
+<div class="step"><span class="step-num">14</span> <code>.\Invoke-AutoHeal.ps1 -Target ns2otpapp -Credential $cred -Mode Diagnose</code></div>
+<div class="step"><span class="step-num">15</span> Open <code>reports\&lt;runId&gt;\report.html</code> and review</div>
+<div class="step"><span class="step-num">16</span> If anything is flagged: <code>.\Invoke-AutoHeal.ps1 -Target ns2otpapp -Credential $cred -Mode Heal -ApplyFixes -Severity Critical,High</code></div>
+<div class="step"><span class="step-num">17</span> Confirm each fix individually, review backup dir for pre-state</div>
+<div class="step"><span class="step-num">18</span> Commit the server-list + schedule nightly AutoHeal (section 11.1)</div>
+
+<footer style="margin-top:60px;padding-top:20px;border-top:1px solid #30363d;color:#8b949e;font-size:12px;text-align:center">
+Cert Manager + AutoHeal / TITAN AI style tooling / 2026
+</footer>
+</main>
+
+<script>
+document.querySelectorAll('pre').forEach(pre=>{
+  const btn = document.createElement('span');
+  btn.className = 'copy';
+  btn.textContent = 'copy';
+  btn.onclick = ()=>{ navigator.clipboard.writeText(pre.innerText); btn.textContent='copied'; setTimeout(()=>btn.textContent='copy',1500); };
+  pre.prepend(btn);
+});
+</script>
+</body>
+</html>
