@@ -31,6 +31,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Defensive: catch common mistype where user passes "Yes" as a positional
+# arg instead of -Yes as a switch. Without this, "Yes" binds to $Subscription
+# and the script later dies with a cryptic "subscription 'yes' doesn't exist"
+# error from Azure CLI. This check protects against that.
+$_boolWords = @('yes','y','no','n','true','false','t','f','confirm','ok','dryrun','htmlreport')
+if ($Subscription -and ($Subscription.Trim().ToLower() -in $_boolWords)) {
+    Write-Host ""
+    Write-Host "  xx  It looks like you passed '$Subscription' as a positional arg." -ForegroundColor Red
+    Write-Host "      That got bound to -Subscription, which expects an Azure sub ID." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Did you mean to skip confirmation prompts?" -ForegroundColor Yellow
+    Write-Host "      .\migrate.ps1 -DryRun -HtmlReport -Yes       (WITH the dash in -Yes)" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Or to force a specific subscription?" -ForegroundColor Yellow
+    Write-Host "      .\migrate.ps1 -Subscription <sub-id-or-name>" -ForegroundColor Green
+    Write-Host ""
+    exit 1
+}
+
 # If HtmlReport is set, imply DryRun (plan only, don't execute)
 if ($HtmlReport -and -not $DryRun) { $DryRun = $true }
 if ($HtmlReport -and -not $HtmlReportPath) {
@@ -43,27 +62,127 @@ $Script:PlannedCommands = New-Object System.Collections.ArrayList
 function Say  ($m) { Write-Host "`n[step] $m" -ForegroundColor Cyan }
 function Ok   ($m) { Write-Host "  ok  $m" -ForegroundColor Green }
 function Warn ($m) { Write-Host "  !!  $m" -ForegroundColor Yellow }
-function Die  ($m) { Write-Host "  xx  $m" -ForegroundColor Red; exit 1 }
+function Die  ($m) {
+    Write-Host "  xx  $m" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  RESUMING SAFELY:" -ForegroundColor Yellow
+    Write-Host "    The script halts mid-way. To continue after fixing the root cause," -ForegroundColor Yellow
+    Write-Host "    simply re-run this exact same command. Already-created resources will" -ForegroundColor Yellow
+    Write-Host "    be detected and skipped (idempotent)." -ForegroundColor Yellow
+    exit 1
+}
+
+# Track what succeeded vs skipped — for end-of-run summary
+$Script:Completed  = New-Object System.Collections.ArrayList
+$Script:Skipped    = New-Object System.Collections.ArrayList
+$Script:Warnings   = New-Object System.Collections.ArrayList
+
+function Mark-Done($what)    { [void]$Script:Completed.Add($what) }
+function Mark-Skipped($what) { [void]$Script:Skipped.Add($what) }
 
 function Confirm-Action($prompt) {
     if ($Yes) { return $true }
-    $ans = Read-Host "  ?? $prompt [y/N]"
-    return $ans -match '^[Yy]$'
+    $ans = Read-Host "  ?? $prompt [y/N or yes]"
+    if ($null -eq $ans) { return $false }
+    $clean = $ans.ToString().Trim().ToLower()
+    # Accept anything that starts with 'y' — y, Y, yes, Yes, YES, yeah, yep, etc.
+    return $clean.StartsWith('y')
 }
 
+# Idempotency whitelist — these exit-code patterns mean "already exists, safe to continue"
+$Script:IdempotentPatterns = @(
+    'already exists',
+    'ResourceAlreadyExists',
+    'AlreadyExistsError',
+    'Code: Conflict',
+    'The resource already exists',
+    'is already associated',
+    'AssociationAlreadyExists',
+    'already attached',
+    'is already in use'
+)
+
 function Invoke-Az {
-    # NOTE: intentionally NO param() block. Using the automatic $args variable
-    # so PowerShell does not try to bind names like -o / --resource-group to
-    # this function's cmdlet-common parameters (which caused "ambiguous
-    # parameter -o" errors against -OutVariable / -OutBuffer).
+    # Uses $args (automatic) so PowerShell doesn't try to bind named params
+    # like -o / --resource-group to this function's cmdlet-common parameters.
     $cmdText = "az " + ($args -join " ")
     if ($Show -or $DryRun) { Write-Host "  `$ $cmdText" -ForegroundColor Magenta }
     if ($HtmlReport) { [void]$Script:PlannedCommands.Add($cmdText) }
     if ($DryRun) { return "" }
-    & az @args
-    if ($LASTEXITCODE -ne 0) {
-        Warn "az command returned exit code $LASTEXITCODE : $cmdText"
+
+    # Capture BOTH stdout and stderr so we can inspect error messages
+    $output = & az @args 2>&1
+    $exit   = $LASTEXITCODE
+
+    if ($exit -eq 0) {
+        return $output
     }
+
+    # Non-zero exit — is it an idempotency-safe "already exists" error?
+    $errText = ($output | Out-String)
+    $isBenign = $false
+    foreach ($pat in $Script:IdempotentPatterns) {
+        if ($errText -match [regex]::Escape($pat)) { $isBenign = $true; break }
+    }
+
+    if ($isBenign) {
+        Warn "Already exists, skipping (idempotent): $cmdText"
+        [void]$Script:Warnings.Add("IDEMPOTENT SKIP: $cmdText")
+        return $output
+    }
+
+    # Real failure — halt loudly with full context
+    Write-Host ""
+    Write-Host "  xx  az FAILED (exit $exit)" -ForegroundColor Red
+    Write-Host "      command : $cmdText" -ForegroundColor Red
+    Write-Host "      --- azure cli output ---" -ForegroundColor Red
+    $errText.TrimEnd() -split "`n" | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
+    Write-Host "      -------------------------" -ForegroundColor Red
+    Die "Azure CLI command above failed. Fix the root cause, then re-run this script — idempotent resources will be skipped on retry."
+}
+
+function Test-AzResource {
+    # Returns $true if an AFD / CDN / WAF resource exists. Used for idempotency
+    # guards so we can pre-check before a create and skip if already present.
+    param([string]$Type, [string]$Name, [string]$ResourceGroup, [string]$Parent)
+    if ($DryRun) { return $false }
+    try {
+        switch ($Type) {
+            "afd-profile" {
+                $r = az afd profile show --profile-name $Name --resource-group $ResourceGroup -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            "afd-origin-group" {
+                $r = az afd origin-group show --profile-name $Parent --origin-group-name $Name --resource-group $ResourceGroup -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            "afd-origin" {
+                $r = az afd origin show --profile-name $Parent --origin-group-name $OriginGroupName --origin-name $Name --resource-group $ResourceGroup -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            "afd-endpoint" {
+                $r = az afd endpoint show --profile-name $Parent --endpoint-name $Name --resource-group $ResourceGroup -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            "afd-route" {
+                $r = az afd route show --profile-name $Parent --endpoint-name $endpointName --route-name $Name --resource-group $ResourceGroup -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            "afd-custom-domain" {
+                $r = az afd custom-domain show --profile-name $Parent --custom-domain-name $Name --resource-group $ResourceGroup -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            "waf-policy" {
+                $r = az network front-door waf-policy show --resource-group $ResourceGroup --name $Name -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            "afd-security-policy" {
+                $r = az afd security-policy show --profile-name $Parent --security-policy-name $Name --resource-group $ResourceGroup -o tsv --query id --only-show-errors 2>$null
+                return -not [string]::IsNullOrEmpty($r)
+            }
+            default { return $false }
+        }
+    } catch { return $false }
 }
 
 # ---- Phase 0: preflight -----------------------------------------------------
@@ -156,46 +275,95 @@ Write-Host @"
 if ($DryRun) { Warn "DRY-RUN mode: no mutations will be made." }
 if (-not (Confirm-Action "Proceed with this plan?")) { Die "Aborted by user." }
 
-# ---- Phase 3: preview -------------------------------------------------------
-Say "[3/7] Migration preview (read-only)"
-Invoke-Az afd profile-migration validate `
-    --name $NewName `
+# ---- Phase 3: show classic profile (read-only) ------------------------------
+Say "[3/7] Show classic profile (read-only)"
+Invoke-Az network front-door show `
+    --name $Classic `
     --resource-group $found.ResourceGroup `
-    --classic-resource-id $found.ResourceId `
-    --sku $Sku `
+    --query "{name:name, resourceState:resourceState, enabledState:enabledState, frontendEndpoints:frontendEndpoints[].hostName}" `
     -o json --only-show-errors
 
-# ---- Phase 4: commit --------------------------------------------------------
+# ---- Phase 4: migrate + commit ----------------------------------------------
 Say "[4/7] COMMITTING migration (this is the real change)"
-if (-not (Confirm-Action "Commit migration now?")) { Die "Aborted before commit." }
-Invoke-Az afd profile-migration migrate `
-    --name $NewName `
-    --resource-group $found.ResourceGroup `
-    --classic-resource-id $found.ResourceId `
-    --sku $Sku
-Ok "Migration committed. Standard profile '$NewName' is now live."
+
+if (Test-AzResource -Type "afd-profile" -Name $NewName -ResourceGroup $found.ResourceGroup) {
+    Ok "Standard profile '$NewName' already exists - checking migration state..."
+    $migState = ""
+    try {
+        $migState = az afd profile show --profile-name $NewName --resource-group $found.ResourceGroup --query "extendedProperties.migrationState" -o tsv --only-show-errors 2>$null
+    } catch { $migState = "" }
+    if ($migState -and $migState -ne "Committed") {
+        Ok "Migration state: $migState - needs commit."
+        if (-not (Confirm-Action "Commit migration now? (this retires classic)")) { Die "Aborted before commit." }
+        Invoke-Az afd profile migration-commit `
+            --profile-name $NewName `
+            --resource-group $found.ResourceGroup
+        Mark-Done "Migration committed"
+    } else {
+        Ok "Migration already committed in prior run. Skipping."
+        Mark-Skipped "Migrate + commit (already done)"
+    }
+} else {
+    if (-not (Confirm-Action "Start migration (creates Standard profile, classic still serves traffic)?")) { Die "Aborted before migrate." }
+    Invoke-Az afd profile migrate `
+        --profile-name $NewName `
+        --resource-group $found.ResourceGroup `
+        --classic-resource-id $found.ResourceId `
+        --sku $Sku
+    Mark-Done "Migrated (Standard profile in Migrating state)"
+    Ok "Standard profile '$NewName' created. Classic '$Classic' still serving traffic."
+
+    if (-not (Confirm-Action "Commit migration now? (this retires classic)")) { Die "Aborted before commit." }
+    Invoke-Az afd profile migration-commit `
+        --profile-name $NewName `
+        --resource-group $found.ResourceGroup
+    Mark-Done "Migration committed"
+}
+Ok "Migration committed."
+
+# Phase-gate: verify the Standard profile now exists before moving to Phase 5.
+# If this fails, Phase 5 would create orphan resources under a non-existent profile.
+if (-not $DryRun) {
+    if (-not (Test-AzResource -Type "afd-profile" -Name $NewName -ResourceGroup $found.ResourceGroup)) {
+        Die "Post-migrate verification FAILED. Standard profile '$NewName' was not found in rg '$($found.ResourceGroup)'. Cannot proceed to Phase 5. Check Azure portal for error details on the migration operation."
+    }
+    Ok "Phase-gate PASSED: Standard profile '$NewName' verified in Azure."
+}
 
 # ---- Phase 5: origin + route ------------------------------------------------
 Say "[5/7] Origin group + origin + route"
-Invoke-Az afd origin-group create `
-    --profile-name $NewName `
-    --resource-group $found.ResourceGroup `
-    --origin-group-name $OriginGroupName `
-    --probe-path "/" --probe-protocol Https `
-    --probe-request-type GET --probe-interval-in-seconds 60 `
-    --sample-size 4 --successful-samples-required 3 `
-    --additional-latency-in-milliseconds 50
 
-Invoke-Az afd origin create `
-    --profile-name $NewName `
-    --resource-group $found.ResourceGroup `
-    --origin-group-name $OriginGroupName `
-    --origin-name $OriginName `
-    --host-name $Origin `
-    --origin-host-header $Origin `
-    --http-port 80 --https-port 443 `
-    --priority 1 --weight 1000 `
-    --enabled-state Enabled
+if (Test-AzResource -Type "afd-origin-group" -Name $OriginGroupName -ResourceGroup $found.ResourceGroup -Parent $NewName) {
+    Ok "Origin group '$OriginGroupName' already exists — skipping."
+    Mark-Skipped "Origin group create"
+} else {
+    Invoke-Az afd origin-group create `
+        --profile-name $NewName `
+        --resource-group $found.ResourceGroup `
+        --origin-group-name $OriginGroupName `
+        --probe-path "/" --probe-protocol Https `
+        --probe-request-type GET --probe-interval-in-seconds 60 `
+        --sample-size 4 --successful-samples-required 3 `
+        --additional-latency-in-milliseconds 50
+    Mark-Done "Origin group created"
+}
+
+if (Test-AzResource -Type "afd-origin" -Name $OriginName -ResourceGroup $found.ResourceGroup -Parent $NewName) {
+    Ok "Origin '$OriginName' already exists — skipping."
+    Mark-Skipped "Origin create"
+} else {
+    Invoke-Az afd origin create `
+        --profile-name $NewName `
+        --resource-group $found.ResourceGroup `
+        --origin-group-name $OriginGroupName `
+        --origin-name $OriginName `
+        --host-name $Origin `
+        --origin-host-header $Origin `
+        --http-port 80 --https-port 443 `
+        --priority 1 --weight 1000 `
+        --enabled-state Enabled
+    Mark-Done "Origin created"
+}
 
 # Find or create endpoint
 $endpointName = ""
@@ -206,64 +374,99 @@ if (-not $DryRun) {
 }
 if (-not $endpointName) {
     $endpointName = "hipyx-endpoint"
-    Invoke-Az afd endpoint create `
-        --profile-name $NewName `
-        --resource-group $found.ResourceGroup `
-        --endpoint-name $endpointName `
-        --enabled-state Enabled
+    if (Test-AzResource -Type "afd-endpoint" -Name $endpointName -ResourceGroup $found.ResourceGroup -Parent $NewName) {
+        Ok "Endpoint '$endpointName' already exists — skipping."
+        Mark-Skipped "Endpoint create"
+    } else {
+        Invoke-Az afd endpoint create `
+            --profile-name $NewName `
+            --resource-group $found.ResourceGroup `
+            --endpoint-name $endpointName `
+            --enabled-state Enabled
+        Mark-Done "Endpoint created"
+    }
 }
 Ok "Using endpoint: $endpointName"
 
-Invoke-Az afd route create `
-    --profile-name $NewName `
-    --resource-group $found.ResourceGroup `
-    --endpoint-name $endpointName `
-    --route-name $RouteName `
-    --origin-group $OriginGroupName `
-    --supported-protocols Https `
-    --forwarding-protocol HttpsOnly `
-    --link-to-default-domain Disabled `
-    --https-redirect Enabled `
-    --patterns-to-match "/*"
+if (Test-AzResource -Type "afd-route" -Name $RouteName -ResourceGroup $found.ResourceGroup -Parent $NewName) {
+    Ok "Route '$RouteName' already exists — skipping create (will update with custom domain in Phase 6)."
+    Mark-Skipped "Route create"
+} else {
+    Invoke-Az afd route create `
+        --profile-name $NewName `
+        --resource-group $found.ResourceGroup `
+        --endpoint-name $endpointName `
+        --route-name $RouteName `
+        --origin-group $OriginGroupName `
+        --supported-protocols Https `
+        --forwarding-protocol HttpsOnly `
+        --link-to-default-domain Disabled `
+        --https-redirect Enabled `
+        --patterns-to-match "/*"
+    Mark-Done "Route created"
+}
 
 # ---- Phase 6: custom domain + cert + WAF ------------------------------------
 Say "[6/7] Custom domain + managed cert + WAF"
 
-Invoke-Az afd custom-domain create `
-    --profile-name $NewName `
-    --resource-group $found.ResourceGroup `
-    --custom-domain-name $DomainSafe `
-    --host-name $Domain `
-    --minimum-tls-version TLS12 `
-    --certificate-type ManagedCertificate
+if (Test-AzResource -Type "afd-custom-domain" -Name $DomainSafe -ResourceGroup $found.ResourceGroup -Parent $NewName) {
+    Ok "Custom domain '$DomainSafe' already exists — skipping create."
+    Mark-Skipped "Custom domain create"
+} else {
+    Invoke-Az afd custom-domain create `
+        --profile-name $NewName `
+        --resource-group $found.ResourceGroup `
+        --custom-domain-name $DomainSafe `
+        --host-name $Domain `
+        --minimum-tls-version TLS12 `
+        --certificate-type ManagedCertificate
+    Mark-Done "Custom domain created"
+}
 
+# Route update is idempotent by nature (update vs create), always run.
 Invoke-Az afd route update `
     --profile-name $NewName `
     --resource-group $found.ResourceGroup `
     --endpoint-name $endpointName `
     --route-name $RouteName `
     --custom-domains $DomainSafe
+Mark-Done "Route attached to custom domain"
 
-Invoke-Az network front-door waf-policy create `
-    --resource-group $found.ResourceGroup `
-    --name $WafPolicyName `
-    --mode Detection `
-    --sku $Sku
+if (Test-AzResource -Type "waf-policy" -Name $WafPolicyName -ResourceGroup $found.ResourceGroup) {
+    Ok "WAF policy '$WafPolicyName' already exists — skipping create."
+    Mark-Skipped "WAF policy create"
+} else {
+    Invoke-Az network front-door waf-policy create `
+        --resource-group $found.ResourceGroup `
+        --name $WafPolicyName `
+        --mode Detection `
+        --sku $Sku
+    Mark-Done "WAF policy created"
+}
 
+# managed-rules add is idempotent — it upserts the rule set version.
 Invoke-Az network front-door waf-policy managed-rules add `
     --resource-group $found.ResourceGroup `
     --policy-name $WafPolicyName `
     --type Microsoft_DefaultRuleSet `
     --version 2.1
+Mark-Done "WAF default rule-set attached"
 
 $wafResId = "/subscriptions/$($found.SubscriptionId)/resourceGroups/$($found.ResourceGroup)/providers/Microsoft.Network/frontdoorwebapplicationfirewallpolicies/$WafPolicyName"
 $domResId = "/subscriptions/$($found.SubscriptionId)/resourceGroups/$($found.ResourceGroup)/providers/Microsoft.Cdn/profiles/$NewName/customDomains/$DomainSafe"
-Invoke-Az afd security-policy create `
-    --profile-name $NewName `
-    --resource-group $found.ResourceGroup `
-    --security-policy-name "fx-survey-waf" `
-    --waf-policy $wafResId `
-    --domains $domResId
+
+if (Test-AzResource -Type "afd-security-policy" -Name "fx-survey-waf" -ResourceGroup $found.ResourceGroup -Parent $NewName) {
+    Ok "Security policy 'fx-survey-waf' already exists — skipping."
+    Mark-Skipped "Security policy create"
+} else {
+    Invoke-Az afd security-policy create `
+        --profile-name $NewName `
+        --resource-group $found.ResourceGroup `
+        --security-policy-name "fx-survey-waf" `
+        --waf-policy $wafResId `
+        --domains $domResId
+    Mark-Done "Security policy created (WAF attached to custom domain)"
+}
 
 Ok "Custom domain + managed cert + WAF in place."
 
@@ -282,19 +485,61 @@ if ($DryRun) {
 }
 
 Write-Host ""
-Write-Host "   ----------------------------------------------------------------------"
-Write-Host "   DNS records at farmboxrx.com (send to Robert / Natalie)"
-Write-Host "   ----------------------------------------------------------------------"
-Write-Host "   1) TYPE : TXT"
+Write-Host "   ======================================================================" -ForegroundColor Green
+Write-Host "   DNS records at farmboxrx.com (send to Robert / Natalie)" -ForegroundColor Green
+Write-Host "   ======================================================================" -ForegroundColor Green
+Write-Host "   STEP 1 (add FIRST, wait for cert approval ~20-60 min):" -ForegroundColor Cyan
+Write-Host "      TYPE : TXT"
 Write-Host "      NAME : _dnsauth.survey"
 Write-Host "      VALUE: $validationToken"
 Write-Host "      TTL  : 300"
-Write-Host "   2) TYPE : CNAME"
+Write-Host ""
+Write-Host "   STEP 2 (add AFTER Azure managed cert = Approved):" -ForegroundColor Cyan
+Write-Host "      TYPE : CNAME"
 Write-Host "      NAME : survey"
 Write-Host "      VALUE: $cnameTarget"
 Write-Host "      TTL  : 300"
-Write-Host "   ----------------------------------------------------------------------"
 Write-Host ""
+Write-Host "   WARNING: Flipping CNAME BEFORE cert is Approved = SSL error window" -ForegroundColor Yellow
+Write-Host "   Check cert status:" -ForegroundColor Yellow
+Write-Host "     az afd custom-domain show --profile-name $NewName \\" -ForegroundColor Yellow
+Write-Host "       --resource-group $($found.ResourceGroup) --custom-domain-name $DomainSafe \\" -ForegroundColor Yellow
+Write-Host "       --query domainValidationState -o tsv" -ForegroundColor Yellow
+Write-Host "   Wait until it returns: Approved" -ForegroundColor Yellow
+Write-Host "   ======================================================================" -ForegroundColor Green
+Write-Host ""
+
+# ---- Run summary ------------------------------------------------------------
+Write-Host ""
+Write-Host "   ======================================================================" -ForegroundColor Green
+Write-Host "    RUN SUMMARY" -ForegroundColor Green
+Write-Host "   ======================================================================" -ForegroundColor Green
+Write-Host "   Classic profile   : $Classic  (rg $($found.ResourceGroup))" -ForegroundColor White
+Write-Host "   Standard profile  : $NewName  ($Sku)" -ForegroundColor White
+Write-Host "   Endpoint          : $endpointName" -ForegroundColor White
+Write-Host "   Custom domain     : $Domain  (TLS 1.2, Azure-managed cert)" -ForegroundColor White
+Write-Host "   WAF policy        : $WafPolicyName  (Detection, OWASP 2.1)" -ForegroundColor White
+Write-Host ""
+Write-Host "   COMPLETED ($($Script:Completed.Count)):" -ForegroundColor Green
+foreach ($item in $Script:Completed) { Write-Host "     [done]   $item" -ForegroundColor Green }
+if ($Script:Skipped.Count -gt 0) {
+    Write-Host ""
+    Write-Host "   SKIPPED (idempotent — already existed from prior run) ($($Script:Skipped.Count)):" -ForegroundColor Yellow
+    foreach ($item in $Script:Skipped) { Write-Host "     [skip]   $item" -ForegroundColor Yellow }
+}
+if ($Script:Warnings.Count -gt 0) {
+    Write-Host ""
+    Write-Host "   WARNINGS ($($Script:Warnings.Count)):" -ForegroundColor Yellow
+    foreach ($w in $Script:Warnings) { Write-Host "     [warn]   $w" -ForegroundColor Yellow }
+}
+Write-Host ""
+Write-Host "   NEXT STEPS:" -ForegroundColor Cyan
+Write-Host "     1. Send Robert the TWO DNS records above (TXT first, CNAME after cert approval)"
+Write-Host "     2. Poll cert status every 10 min until state = Approved"
+Write-Host "     3. Once Approved, tell Robert to flip the CNAME"
+Write-Host "     4. Monitor https://$Domain for 24h, then change WAF mode Detection -> Prevention"
+Write-Host "     5. If anything breaks, roll back with: .\fx-survey-rollback.ps1 -Yes"
+Write-Host "   ======================================================================" -ForegroundColor Green
 
 Ok "All done."
 
