@@ -1,0 +1,14 @@
+
+
+az afd security-policy create --profile-name hipyx-std --resource-group Production --security-policy-name fx-survey-waf --waf-policy "/subscriptions/e42e94b5-c6f8-4af0-a41b-16fda520de6e/resourceGroups/Production/providers/Microsoft.Network/frontdoorwebapplicationfirewallpolicies/hipyxWafPolicy" --domains "/subscriptions/e42e94b5-c6f8-4af0-a41b-16fda520de6e/resourceGroups/Production/providers/Microsoft.Cdn/profiles/hipyx-std/customDomains/survey-farmboxrx-com"
+
+-------------------------------------------------
+
+
+
+
+az afd endpoint show --profile-name hipyx-std --resource-group Production --endpoint-name pyx-fx-survey-ep --query hostName -o tsv
+
+---------------------------------------------------------------
+
+az afd custom-domain show --profile-name hipyx-std --resource-group Production --custom-domain-name survey-farmboxrx-com --query "validationProperties.validationToken" -o tsv
