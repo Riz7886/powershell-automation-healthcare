@@ -1,0 +1,5 @@
+az extension update --name front-door
+az extension add --name front-door --upgrade
+az version
+
+az upgrade --yes
