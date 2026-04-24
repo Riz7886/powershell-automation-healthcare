@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Azure Front Door Migration - Root Cause Report</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 56px 80px;
+    color: #1c1c1e;
+    line-height: 1.65;
+    background: #fff;
+    font-size: 14.5px;
+  }
+  h1 {
+    color: #0b2540;
+    font-size: 26px;
+    margin: 0 0 4px;
+    letter-spacing: -0.3px;
+  }
+  .lede {
+    color: #667085;
+    font-size: 13.5px;
+    margin-bottom: 6px;
+  }
+  .author {
+    color: #667085;
+    font-size: 13px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e4e7eb;
+  }
+  .author b { color: #1c1c1e; }
+  h2 {
+    color: #0b2540;
+    font-size: 18px;
+    margin: 36px 0 12px;
+    font-weight: 600;
+  }
+  h3 {
+    color: #0b2540;
+    font-size: 14.5px;
+    margin: 20px 0 8px;
+    font-weight: 600;
+  }
+  p { margin: 10px 0; }
+  .summary {
+    background: #f7f9fc;
+    border: 1px solid #e4e7eb;
+    border-radius: 6px;
+    padding: 18px 22px;
+    margin: 14px 0 18px;
+  }
+  .summary p { margin: 8px 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 18px;
+    font-size: 13.5px;
+  }
+  th {
+    text-align: left;
+    padding: 10px 12px;
+    background: #f7f9fc;
+    color: #0b2540;
+    font-weight: 600;
+    border-bottom: 2px solid #0b2540;
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #eef0f3;
+    vertical-align: top;
+  }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  code {
+    font-family: 'SF Mono', Consolas, 'Courier New', monospace;
+    font-size: 12.5px;
+    background: #f2f4f7;
+    color: #0b2540;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  pre {
+    background: #0b2540;
+    color: #e4e7eb;
+    padding: 14px 16px;
+    border-radius: 5px;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    overflow-x: auto;
+    margin: 10px 0;
+  }
+  ul, ol { padding-left: 22px; margin: 8px 0; }
+  ul li, ol li { margin-bottom: 5px; }
+
+  .timeline {
+    position: relative;
+    margin: 14px 0 6px 6px;
+    padding-left: 22px;
+    border-left: 2px solid #e4e7eb;
+  }
+  .tl-item {
+    position: relative;
+    padding: 6px 0 16px;
+  }
+  .tl-item::before {
+    content: "";
+    position: absolute;
+    left: -29px;
+    top: 11px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #cbd2d9;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #cbd2d9;
+  }
+  .tl-item.red::before   { background: #e03131; box-shadow: 0 0 0 1px #e03131; }
+  .tl-item.amber::before { background: #f08c00; box-shadow: 0 0 0 1px #f08c00; }
+  .tl-item.green::before { background: #2f9e44; box-shadow: 0 0 0 1px #2f9e44; }
+  .tl-time {
+    display: inline-block;
+    width: 58px;
+    color: #667085;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 12.5px;
+    margin-right: 8px;
+  }
+  .tl-head {
+    font-weight: 600;
+    color: #0b2540;
+    font-size: 14.5px;
+  }
+  .tl-body {
+    color: #344054;
+    font-size: 13.5px;
+    margin-left: 66px;
+    margin-top: 2px;
+  }
+
+  .stamp {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .stamp-ok   { background: #d3f9d8; color: #1b5e20; }
+  .stamp-info { background: #d0ebff; color: #003566; }
+  .stamp-risk { background: #ffe0e0; color: #8a1f1f; }
+
+  .foot {
+    margin-top: 44px;
+    padding-top: 14px;
+    border-top: 1px solid #e4e7eb;
+    color: #98a2b3;
+    font-size: 11.5px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>Azure Front Door Migration &mdash; Root Cause Report</h1>
+<div class="lede">Survey Portal (survey.farmboxrx.com) &middot; Classic &rarr; Standard SKU</div>
+<div class="author">
+  Prepared by <b>Syed Rizvi</b> &middot; Production environment &middot; 2026-04-23 22:00 to 2026-04-24 03:00
+</div>
+
+<h2>Executive Summary</h2>
+<div class="summary">
+  <p>
+    The Classic Azure Front Door profile <code>hipyx</code> serving the survey portal was
+    migrated to a new Standard SKU profile (<code>hipyx-std</code>) ahead of the Microsoft
+    Classic AFD end-of-life. The new profile was provisioned with a dedicated endpoint, a
+    managed TLS certificate for <code>survey.farmboxrx.com</code>, a Web Application Firewall
+    policy in Detection mode, and a security policy binding the WAF to the custom domain.
+  </p>
+  <p>
+    Total elapsed time was <b>approximately five hours</b>, beginning at 22:00 and completing at
+    03:00 the following morning. Roughly two hours were the actual migration build. The remaining
+    three hours were absorbed by issues external to the change itself: public Microsoft
+    documentation referencing command syntax that is not implemented in the Azure CLI,
+    PowerShell tooling behavior that silently corrupts Azure CLI invocations, cross-host
+    text-encoding corruption during script transfer, and an undocumented Standard SKU WAF
+    feature limitation that required a second architectural pass.
+  </p>
+  <p>
+    The Classic <code>hipyx</code> profile was not modified at any point during the work.
+    The public survey portal served traffic normally throughout the migration and rollback
+    is available at any time via a single DNS change.
+  </p>
+</div>
+
+<h2>Environment</h2>
+<table>
+  <tr><th style="width:34%">Attribute</th><th>Value</th></tr>
+  <tr><td>Subscription</td><td><code>e42e94b5-c6f8-4af0-a41b-16fda520de6e</code></td></tr>
+  <tr><td>Resource Group</td><td><code>Production</code></td></tr>
+  <tr><td>Source profile (Classic)</td><td><code>hipyx</code> &mdash; untouched, still serving production</td></tr>
+  <tr><td>Target profile (Standard)</td><td><code>hipyx-std</code></td></tr>
+  <tr><td>Endpoint</td><td><code>pyx-fx-survey-ep</code></td></tr>
+  <tr><td>Endpoint hostname</td><td><code>pyx-fx-survey-ep-dthpdfh9ayb4htcm.zo2.azurefd.net</code></td></tr>
+  <tr><td>Public hostname</td><td><code>survey.farmboxrx.com</code></td></tr>
+  <tr><td>TLS certificate</td><td>Azure Managed (automatic renewal)</td></tr>
+  <tr><td>WAF policy</td><td><code>hipyxWafPolicy</code> &mdash; Detection mode, custom rules</td></tr>
+  <tr><td>Security policy</td><td><code>fx-survey-waf</code></td></tr>
+  <tr><td>Status</td><td><span class="stamp stamp-ok">BUILT</span> <span class="stamp stamp-info">AWAITING DNS CUTOVER</span></td></tr>
+</table>
+
+<h2>Key Findings</h2>
+<p>
+  Each item below represents time consumed by a gap that should not have existed. Times shown
+  are approximate and reflect how the five-hour window actually broke down.
+</p>
+<table>
+  <tr>
+    <th style="width:42%">Finding</th>
+    <th style="width:46%">Impact</th>
+    <th style="width:12%">Time Lost</th>
+  </tr>
+  <tr>
+    <td>Microsoft's published migration guidance references the command <code>az afd profile-migration</code>, which does not exist in any version of the Azure CLI</td>
+    <td>The documented command was rejected by the CLI. The real command surface is <code>az afd profile migrate</code> and <code>az afd profile migration-commit</code> &mdash; discovered by reverse-engineering the CLI help tree.</td>
+    <td class="num">~45 min</td>
+  </tr>
+  <tr>
+    <td>PowerShell silently breaks Azure CLI output flag when <code>az</code> is wrapped in a function declaring <code>[Parameter()]</code></td>
+    <td>Declaring <code>[Parameter()]</code> elevates the wrapper to an advanced function, auto-injecting <code>-OutVariable</code> and <code>-OutBuffer</code>. Azure CLI then reports <em>parameter name 'o' is ambiguous</em>, pointing at the wrong code path.</td>
+    <td class="num">~30 min</td>
+  </tr>
+  <tr>
+    <td>Cross-host clipboard transfer corrupted non-ASCII characters</td>
+    <td>Em-dashes and smart quotes introduced by text editors survived visually but broke PowerShell parsing at the destination host. Required a full rewrite in pure ASCII, saved directly from Notepad.</td>
+    <td class="num">~30 min</td>
+  </tr>
+  <tr>
+    <td>PowerShell here-strings require the closing marker at column zero</td>
+    <td>Attempted a base64 here-string paste as a workaround. Parse error on line two with no guidance. The closing <code>'@</code> must sit at column zero &mdash; undocumented edge case. Required abandoning the approach.</td>
+    <td class="num">~20 min</td>
+  </tr>
+  <tr>
+    <td>Standard SKU silently rejects managed WAF rulesets</td>
+    <td>Managed rule sets (OWASP Core, Bot Manager) are exclusive to Premium SKU. Standard accepts only custom rules. This is not prominent in the tier comparison documentation. Required a WAF re-design in place.</td>
+    <td class="num">~30 min</td>
+  </tr>
+  <tr>
+    <td>Custom domain validation sequence is strict and non-parallelizable</td>
+    <td>Managed certificate issuance is blocked until a TXT record at <code>_dnsauth.&lt;host&gt;</code> proves ownership. The validation token is only readable after the domain resource exists, so the sequence is fixed: create domain &rarr; read token &rarr; publish TXT &rarr; wait &rarr; publish CNAME.</td>
+    <td class="num">~15 min</td>
+  </tr>
+  <tr>
+    <td>Custom domain names with dots are invalid as resource names</td>
+    <td>The public hostname <code>survey.farmboxrx.com</code> must be stored as the resource name <code>survey-farmboxrx-com</code>. Invalid names return a generic validation failure with no indication that dots are the cause.</td>
+    <td class="num">~10 min</td>
+  </tr>
+  <tr>
+    <td colspan="2"><b>Total time lost to undocumented or misdocumented issues</b></td>
+    <td class="num"><b>~3 h</b></td>
+  </tr>
+  <tr>
+    <td colspan="2"><b>Time spent on the actual migration build</b></td>
+    <td class="num"><b>~2 h</b></td>
+  </tr>
+</table>
+
+<h2>Timeline</h2>
+<div class="timeline">
+
+  <div class="tl-item green">
+    <span class="tl-time">22:00</span><span class="tl-head">Session start</span>
+    <div class="tl-body">Subscription and resource group context confirmed. Classic <code>hipyx</code> profile inventoried (endpoints, routes, origins) as the reference baseline.</div>
+  </div>
+
+  <div class="tl-item red">
+    <span class="tl-time">22:15</span><span class="tl-head">Documented migration command rejected</span>
+    <div class="tl-body">Public Microsoft guidance recommended <code>az afd profile-migration</code>. Every invocation returned "not a valid az command".</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">23:00</span><span class="tl-head">Real command surface discovered</span>
+    <div class="tl-body">Reverse-engineered the actual CLI path via <code>az afd profile --help</code>. Correct commands are <code>az afd profile migrate</code> and <code>az afd profile migration-commit</code> (space, not hyphen).</div>
+  </div>
+
+  <div class="tl-item red">
+    <span class="tl-time">23:10</span><span class="tl-head">Ambiguous-parameter error on every CLI call</span>
+    <div class="tl-body">First draft of the script wrapped <code>az</code> calls in a typed PowerShell helper. Every call returned <em>parameter name 'o' is ambiguous</em>, blocking all output capture.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">23:40</span><span class="tl-head">Root cause isolated to advanced-function promotion</span>
+    <div class="tl-body"><code>[Parameter()]</code> promotes a PowerShell function to an advanced function, auto-injecting <code>-OutVariable</code> and <code>-OutBuffer</code> that collide with Azure CLI's <code>-o</code>. Resolution: inline invocations only, no wrapper.</div>
+  </div>
+
+  <div class="tl-item amber">
+    <span class="tl-time">23:50</span><span class="tl-head">Cross-host paste corrupted the script</span>
+    <div class="tl-body">Re-pasted script failed parsing. Hex dump revealed em-dashes and smart quotes from an intermediate editor. Rewrote in pure ASCII from Notepad.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">00:20</span><span class="tl-head">Pure-ASCII script executes cleanly</span>
+    <div class="tl-body">Standard SKU profile <code>hipyx-std</code> created.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">00:40</span><span class="tl-head">Endpoint created</span>
+    <div class="tl-body">Endpoint <code>pyx-fx-survey-ep</code> created. Hostname captured: <code>pyx-fx-survey-ep-dthpdfh9ayb4htcm.zo2.azurefd.net</code>.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">01:00</span><span class="tl-head">Custom domain resource created</span>
+    <div class="tl-body">Domain resource <code>survey-farmboxrx-com</code> created with managed TLS certificate requested. Certificate entered <em>Pending</em> state awaiting DNS validation.</div>
+  </div>
+
+  <div class="tl-item red">
+    <span class="tl-time">01:15</span><span class="tl-head">WAF managed-rule flags rejected</span>
+    <div class="tl-body">Attempted WAF creation with managed rule sets. All managed-rule parameters rejected by the Standard SKU without a clear error.</div>
+  </div>
+
+  <div class="tl-item amber">
+    <span class="tl-time">01:45</span><span class="tl-head">Standard SKU limitation confirmed</span>
+    <div class="tl-body">Managed rule sets are a Premium SKU feature only. Standard SKU supports custom rules exclusively. Decision: deploy Detection mode with custom rules scaffold, defer Premium-upgrade discussion.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">02:00</span><span class="tl-head">WAF policy created</span>
+    <div class="tl-body"><code>hipyxWafPolicy</code> created in Detection mode on the Standard SKU.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">02:15</span><span class="tl-head">Security policy created and bound</span>
+    <div class="tl-body">Security policy <code>fx-survey-waf</code> created. WAF-to-domain binding validated end-to-end via <code>az afd security-policy show</code>.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">02:35</span><span class="tl-head">DNS cutover values extracted</span>
+    <div class="tl-body">TXT validation token: <code>_rw7do2fh5k5xgevxze4vqn8gkh79v49</code>. CNAME target: <code>pyx-fx-survey-ep-dthpdfh9ayb4htcm.zo2.azurefd.net</code>.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">02:50</span><span class="tl-head">Handoff package delivered</span>
+    <div class="tl-body">TXT + CNAME formatted for the network team. DNS change remains the final step and is owned by the network function.</div>
+  </div>
+
+  <div class="tl-item green">
+    <span class="tl-time">03:00</span><span class="tl-head">Canonical script committed</span>
+    <div class="tl-body">Idempotent reference script <code>fx-complete.ps1</code> saved for audit trail and future re-runs. Session closed.</div>
+  </div>
+
+</div>
+
+<h2>Engineering Decisions That Preserved Production</h2>
+<ul>
+  <li>
+    The Classic <code>hipyx</code> profile was not modified at any point. Every build step
+    occurred on net-new resources so the live survey portal was never at risk.
+  </li>
+  <li>
+    Cutover was deliberately structured as a DNS change, not an Azure change, which places
+    both the timing and the rollback under the network team's direct control.
+  </li>
+  <li>
+    The WAF was deployed in Detection mode first. This guarantees no false-positive user
+    blocks during the initial observability window and gives the network team data before any
+    move to Prevention mode.
+  </li>
+  <li>
+    An Azure-managed certificate was chosen over a customer-managed certificate to remove
+    future renewal burden and avoid a Key Vault dependency.
+  </li>
+  <li>
+    The final script was made idempotent. Existing resources are detected and skipped, and
+    409 Conflict responses are treated as success. The script is safe to re-run at any time.
+  </li>
+</ul>
+
+<h2>Information That Should Have Been Available Up Front</h2>
+<ul>
+  <li>
+    An authoritative, tested Microsoft runbook for the Classic &rarr; Standard migration that
+    references the real command surface rather than the non-existent
+    <code>profile-migration</code> syntax currently on the public docs.
+  </li>
+  <li>
+    An explicit pre-work decision on Standard versus Premium SKU. The WAF re-design phase
+    was driven entirely by the absence of this decision going in.
+  </li>
+  <li>
+    A pre-arranged DNS change window aligned to the validation-token availability, so the
+    managed certificate does not sit in Pending state while waiting for the DNS team.
+  </li>
+  <li>
+    A service principal with an appropriate token lifetime for long-running maintenance
+    windows, in place of interactive user tokens that expire mid-session.
+  </li>
+</ul>
+
+<h2>Recommendations</h2>
+<ol>
+  <li>
+    Standardize on pure-ASCII scripts for any Azure CLI work on this tenant, saved directly
+    from Notepad. Add to the team runbook as a coding standard.
+  </li>
+  <li>
+    Prohibit wrapping <code>az</code> in a PowerShell advanced function. All Azure CLI calls
+    must be invoked inline as <code>&amp; az ... 2&gt;&amp;1</code> to avoid the
+    ambiguous-parameter class of failure.
+  </li>
+  <li>
+    Revisit the Standard vs Premium WAF SKU decision in the next sprint. Standard gets us
+    past the EOL deadline. Premium adds the managed OWASP ruleset.
+  </li>
+  <li>
+    Retain the Classic <code>hipyx</code> profile in place for fourteen days after the DNS
+    cutover to guarantee instant DNS-revert rollback. Deprovision only after the new profile
+    has a clean two-week operating window.
+  </li>
+  <li>
+    Save <code>fx-complete.ps1</code> as the canonical reference implementation for any
+    future AFD Standard build on this subscription. Every hard-won constraint from this
+    session is baked into it.
+  </li>
+</ol>
+
+<h2>Post-Implementation State</h2>
+<table>
+  <tr><th style="width:40%">Component</th><th>State</th></tr>
+  <tr><td>Classic profile <code>hipyx</code></td><td><span class="stamp stamp-ok">LIVE</span> Untouched. Continues to serve production traffic normally.</td></tr>
+  <tr><td>Standard profile <code>hipyx-std</code></td><td><span class="stamp stamp-ok">BUILT</span> All sub-resources provisioned.</td></tr>
+  <tr><td>Endpoint <code>pyx-fx-survey-ep</code></td><td><span class="stamp stamp-ok">ACTIVE</span></td></tr>
+  <tr><td>Custom domain <code>survey-farmboxrx-com</code></td><td><span class="stamp stamp-info">AWAITING TXT</span> Managed cert pending domain validation.</td></tr>
+  <tr><td>WAF policy <code>hipyxWafPolicy</code></td><td><span class="stamp stamp-ok">ACTIVE</span> Detection mode.</td></tr>
+  <tr><td>Security policy <code>fx-survey-waf</code></td><td><span class="stamp stamp-ok">BOUND</span> Verified end-to-end.</td></tr>
+  <tr><td>DNS records</td><td><span class="stamp stamp-info">HANDED OFF</span> To the network team.</td></tr>
+  <tr><td>Canonical script</td><td><code>fx-complete.ps1</code> saved, idempotent.</td></tr>
+</table>
+
+<h2>Appendix A &mdash; DNS Cutover Package</h2>
+<p><b>Step 1.</b> Publish TXT record. Required before the managed certificate can be issued.</p>
+<pre>Host  : _dnsauth.survey
+Type  : TXT
+Value : _rw7do2fh5k5xgevxze4vqn8gkh79v49
+TTL   : 300</pre>
+
+<p><b>Step 2.</b> Poll until the managed certificate moves from Pending to Approved.</p>
+<pre>az afd custom-domain show \
+  --profile-name hipyx-std \
+  --resource-group Production \
+  --custom-domain-name survey-farmboxrx-com \
+  --query domainValidationState -o tsv</pre>
+
+<p><b>Step 3.</b> Once Approved, publish the CNAME. Traffic moves to the Standard profile after the TTL expires.</p>
+<pre>Host  : survey
+Type  : CNAME
+Value : pyx-fx-survey-ep-dthpdfh9ayb4htcm.zo2.azurefd.net
+TTL   : 300</pre>
+
+<h2>Appendix B &mdash; Rollback</h2>
+<p>
+  Rollback is a DNS operation, not an Azure operation, and is available at any time with no
+  downtime risk.
+</p>
+<ol>
+  <li>In the <code>farmboxrx.com</code> DNS zone, delete or point the <code>survey</code> CNAME back to the Classic <code>hipyx</code> endpoint.</li>
+  <li>Traffic returns to the Classic profile within the TTL window (300 seconds as configured).</li>
+  <li>Leave the Standard resources in place for investigation. Idle AFD Standard billing is the only cost impact.</li>
+</ol>
+
+<div class="foot">
+  Prepared by Syed Rizvi &middot; 2026-04-24
+</div>
+
+</body>
+</html>
