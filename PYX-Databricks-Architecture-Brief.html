@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PYX Health Databricks Lakehouse - Architecture Brief for Leadership</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0A0C10;
+    --surface: #11151C;
+    --surface-2: #161B24;
+    --border: #1F2632;
+    --border-bright: #2A3340;
+    --text: #E8ECF1;
+    --text-muted: #9BA4B0;
+    --text-dim: #6B7380;
+    --accent: #5B9BFF;
+    --signal: #E5564A;
+    --gold: #D4A444;
+    --bronze: #B5713A;
+    --silver: #8C95A0;
+    --green: #4FB37A;
+    --serif: 'Fraunces', Georgia, serif;
+    --sans: 'Inter', -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.7;
+    padding: 0;
+  }
+
+  .container { max-width: 1080px; margin: 0 auto; padding: 64px 48px; }
+
+  header.cover { border-bottom: 1px solid var(--border); margin-bottom: 56px; padding-bottom: 32px; }
+
+  .label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 16px; }
+
+  h1 { font-family: var(--serif); font-size: 52px; line-height: 1.05; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 18px; }
+  h1 em { color: var(--accent); font-style: italic; font-weight: 400; }
+
+  .lede { font-size: 18px; color: var(--text-muted); max-width: 760px; line-height: 1.6; }
+
+  section { margin-bottom: 80px; scroll-margin-top: 32px; }
+
+  h2 { font-family: var(--serif); font-size: 32px; line-height: 1.2; font-weight: 500; letter-spacing: -0.01em; margin-bottom: 14px; }
+  h2 em { color: var(--accent); font-style: italic; }
+
+  h3 { font-family: var(--serif); font-size: 22px; font-weight: 500; margin-top: 36px; margin-bottom: 10px; letter-spacing: -0.01em; }
+
+  h4 { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500; margin-top: 24px; margin-bottom: 10px; }
+
+  p { color: var(--text-muted); margin-bottom: 16px; }
+  p strong, li strong { color: var(--text); font-weight: 500; }
+
+  .lead-para { font-size: 17px; color: var(--text); margin-bottom: 20px; max-width: 720px; line-height: 1.65; }
+
+  ul, ol { color: var(--text-muted); padding-left: 20px; margin-bottom: 16px; }
+  li { margin-bottom: 8px; }
+
+  code { font-family: var(--mono); font-size: 13px; background: var(--surface); padding: 1px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border); }
+
+  table { width: 100%; border-collapse: collapse; margin: 18px 0 28px 0; font-size: 14px; }
+  th { text-align: left; font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--border-bright); }
+  td { padding: 14px 16px; border-bottom: 1px solid var(--border); color: var(--text-muted); vertical-align: top; }
+  td.text { color: var(--text); }
+
+  .arch-frame { background: #FAFBFC; border: 1px solid var(--border); border-radius: 6px; padding: 28px; margin: 24px 0; overflow-x: auto; }
+  .arch-frame svg { display: block; max-width: 100%; height: auto; }
+  .arch-caption { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 12px; padding: 0 6px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 22px 26px; margin: 14px 0; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 18px 0; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin: 18px 0; }
+
+  .kv { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px 20px; }
+  .kv-key { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+  .kv-val { color: var(--text); font-weight: 500; font-size: 17px; }
+
+  .toc { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 24px 30px; margin-bottom: 56px; }
+  .toc h4 { margin-top: 0; }
+  .toc ol { list-style: none; padding: 0; }
+  .toc li { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .toc li:last-child { border-bottom: none; }
+  .toc a { color: var(--text-muted); text-decoration: none; font-size: 15px; }
+  .toc a:hover { color: var(--accent); }
+  .toc-num { font-family: var(--mono); color: var(--text-dim); font-size: 12px; }
+
+  .callout { border-left: 3px solid var(--accent); background: var(--surface); padding: 16px 24px; margin: 20px 0; border-radius: 0 4px 4px 0; }
+  .callout p { margin-bottom: 0; color: var(--text); }
+  .callout-warn { border-left-color: var(--signal); }
+  .callout-good { border-left-color: var(--green); }
+
+  .analogy { background: rgba(91,155,255,0.06); border: 1px solid rgba(91,155,255,0.24); border-radius: 6px; padding: 18px 24px; margin: 20px 0; }
+  .analogy-label { font-family: var(--mono); font-size: 10px; color: var(--accent); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+  .analogy p { color: var(--text); margin-bottom: 0; }
+
+  .stat-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; margin: 24px 0; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 18px; }
+  .stat-num { font-family: var(--serif); font-size: 30px; color: var(--text); line-height: 1; margin-bottom: 6px; }
+  .stat-label { font-size: 12px; color: var(--text-muted); }
+
+  footer { margin-top: 96px; padding-top: 32px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<header class="cover">
+  <div class="label">PYX Health &middot; Data Platform &middot; For leadership review</div>
+  <h1>What we are building, <em>in plain English</em>.</h1>
+  <p class="lede">A walk-through of the new PYX Health data platform on Databricks, written for non-engineers. We explain what the platform does, who can see what data, how PHI stays protected, what the V4C vendor relationship looks like, and how much it costs to run. <strong style="color: var(--text);">100 percent serverless</strong> in West US 2 (primary) and West US (disaster recovery). Code is finalized; deployment ready by Thursday.</p>
+</header>
+
+<div class="toc">
+  <h4>What's in this brief</h4>
+  <ol>
+    <li><a href="#what">1. What we are building, in one paragraph</a><span class="toc-num">2-min read</span></li>
+    <li><a href="#why">2. Why a "lakehouse" matters for PYX</a><span class="toc-num">3-min read</span></li>
+    <li><a href="#picture">3. The big picture (one diagram)</a><span class="toc-num">visual</span></li>
+    <li><a href="#layers">4. The three layers: Bronze, Silver, Gold</a><span class="toc-num">4-min read</span></li>
+    <li><a href="#who">5. Who can see what (the access map)</a><span class="toc-num">visual</span></li>
+    <li><a href="#phi">6. How PHI stays protected</a><span class="toc-num">3-min read</span></li>
+    <li><a href="#vendors">7. V4C and Tableau: the outside vendors</a><span class="toc-num">3-min read</span></li>
+    <li><a href="#cost">8. The cost decision: Budget vs Enterprise</a><span class="toc-num">5-min read</span></li>
+    <li><a href="#timeline">9. Timeline and what happens Thursday</a><span class="toc-num">2-min read</span></li>
+    <li><a href="#faq">10. Frequently-asked questions</a><span class="toc-num">5-min read</span></li>
+  </ol>
+</div>
+
+<section id="what">
+  <div class="label">Section 1</div>
+  <h2>What we are <em>building</em>, in one paragraph.</h2>
+  <p class="lead-para">We are taking PYX Health's data, which today lives scattered across SQL Server, Salesforce, and FiveNine, and pulling it into one secure, governed home on Databricks running in Microsoft Azure. From that one home, the right people see the right data with the right protections. Tableau gets analytics-ready data. V4C gets the data-quality view they need. Engineers get raw data to work with. Patients' protected health information stays protected throughout. Auditors can see who looked at what, when.</p>
+
+  <div class="analogy">
+    <div class="analogy-label">Think of it this way</div>
+    <p>Today PYX's data is like having patient files in three different filing cabinets in three different offices. Some staff have keys to one cabinet, some to another, no one has a clean view across all three, and there's no central log of who opened which drawer. We are replacing that with one secure central building with a front desk, a guard at every floor, and a camera on every door.</p>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="stat-num">3</div><div class="stat-label">Source systems pulled in</div></div>
+    <div class="stat"><div class="stat-num">~200</div><div class="stat-label">Data tables governed</div></div>
+    <div class="stat"><div class="stat-num">5</div><div class="stat-label">Role groups with scoped access</div></div>
+    <div class="stat"><div class="stat-num">2</div><div class="stat-label">External vendors with controlled access</div></div>
+  </div>
+</section>
+
+<section id="why">
+  <div class="label">Section 2</div>
+  <h2>Why a <em>"lakehouse"</em> matters for PYX.</h2>
+
+  <p class="lead-para">A "lakehouse" combines two older ideas. A "data warehouse" is a tidy library where everything is filed and searchable but expensive and slow to update. A "data lake" is a big warehouse floor where everything dumps unsorted but cheap and fast to add to. The lakehouse keeps the cheap, fast ingestion of a lake, with the tidy, searchable, secure access of a warehouse. Databricks is the leading lakehouse platform.</p>
+
+  <h3>Why this matters specifically for PYX Health</h3>
+  <ul>
+    <li><strong>HIPAA compliance audits get cleaner.</strong> Every query against PHI is logged with the user's identity. The audit log is built-in, not bolted on.</li>
+    <li><strong>One source of truth for analytics.</strong> Today, Tony's reports might pull different numbers depending on which cabinet they sourced from. The lakehouse gives one canonical "Gold" copy that everyone agrees on.</li>
+    <li><strong>Vendors plug in cleanly.</strong> V4C, Tableau, and any future analytics vendor get a scoped, audited connection. No more giving someone a database password and praying.</li>
+    <li><strong>Cost is predictable.</strong> Budgets and alerts on every cost center. If somebody runs a query that would cost $5,000, the system catches it before it runs.</li>
+    <li><strong>Development is safer.</strong> Engineers work against synthetic-data copies in DEV. No engineer ever touches real patient data unless they explicitly need to and have the right group membership.</li>
+  </ul>
+
+  <div class="callout callout-good">
+    <p><strong>Bottom line.</strong> The lakehouse moves PYX from "we have data in three places, hope nobody messes up" to "all our data is in one place, with audit-grade controls, ready to be analyzed without putting a single patient at risk."</p>
+  </div>
+</section>
+
+<section id="picture">
+  <div class="label">Section 3</div>
+  <h2>The <em>big picture</em>, one diagram.</h2>
+  <p class="lead-para">Read it left to right. Data starts in PYX's source systems on the far left. It is pulled in by ingestion tools, lands in Azure storage, gets refined through three quality layers (Bronze, Silver, Gold), and is consumed on the far right by Tableau, V4C, and reverse-ETL feeds.</p>
+
+  <div class="arch-frame">
+    <svg viewBox="0 0 1080 620" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#3D4756"/></marker>
+        <marker id="arrowDash" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#5B9BFF"/></marker>
+      </defs>
+      <style>
+        .lane { fill: none; stroke: #C8CFD9; stroke-width: 1; }
+        .lane-label { font-family: 'Inter', sans-serif; font-size: 11px; fill: #555E6D; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+        .box { fill: white; stroke: #2A3340; stroke-width: 1; }
+        .box-bronze { fill: #FCEFE3; stroke: #B5713A; }
+        .box-silver { fill: #F1F3F5; stroke: #8C95A0; }
+        .box-gold { fill: #FBF3DA; stroke: #D4A444; }
+        .box-source { fill: #EEF4FF; stroke: #5B9BFF; }
+        .box-consumer { fill: #EAF7EF; stroke: #4FB37A; }
+        .label-text { font-family: 'Inter', sans-serif; font-size: 12px; fill: #0A0C10; font-weight: 500; }
+        .small-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #555E6D; }
+        .arrow-line { fill: none; stroke: #3D4756; stroke-width: 1.4; marker-end: url(#arrow); }
+        .arrow-line-dash { fill: none; stroke: #5B9BFF; stroke-width: 1.4; marker-end: url(#arrowDash); stroke-dasharray: 4 3; }
+      </style>
+
+      <rect class="lane" x="20" y="60" width="170" height="500"/>
+      <text class="lane-label" x="105" y="44" text-anchor="middle">PYX source systems</text>
+      <rect class="box box-source" x="40" y="100" width="130" height="48" rx="2"/>
+      <text class="label-text" x="105" y="121" text-anchor="middle">SQL Server</text>
+      <text class="small-text" x="105" y="138" text-anchor="middle">production database</text>
+      <rect class="box box-source" x="40" y="220" width="130" height="48" rx="2"/>
+      <text class="label-text" x="105" y="241" text-anchor="middle">Salesforce</text>
+      <text class="small-text" x="105" y="258" text-anchor="middle">CRM</text>
+      <rect class="box box-source" x="40" y="340" width="130" height="48" rx="2"/>
+      <text class="label-text" x="105" y="361" text-anchor="middle">FiveNine</text>
+      <text class="small-text" x="105" y="378" text-anchor="middle">call center</text>
+
+      <rect class="lane" x="210" y="60" width="170" height="500"/>
+      <text class="lane-label" x="295" y="44" text-anchor="middle">Pulling data in</text>
+      <rect class="box" x="225" y="100" width="140" height="48" rx="2"/>
+      <text class="label-text" x="295" y="121" text-anchor="middle">Lakeflow Connect</text>
+      <text class="small-text" x="295" y="138" text-anchor="middle">streaming, sub-minute</text>
+      <rect class="box" x="225" y="220" width="140" height="48" rx="2"/>
+      <text class="label-text" x="295" y="241" text-anchor="middle">Apache Airflow</text>
+      <text class="small-text" x="295" y="258" text-anchor="middle">every 15 minutes</text>
+      <rect class="box" x="225" y="340" width="140" height="48" rx="2"/>
+      <text class="label-text" x="295" y="361" text-anchor="middle">Apache Airflow</text>
+      <text class="small-text" x="295" y="378" text-anchor="middle">hourly</text>
+
+      <rect class="lane" x="400" y="60" width="160" height="500"/>
+      <text class="lane-label" x="480" y="44" text-anchor="middle">Secure storage</text>
+      <rect class="box box-bronze" x="420" y="200" width="120" height="100" rx="2"/>
+      <text class="label-text" x="480" y="240" text-anchor="middle">Azure storage</text>
+      <text class="small-text" x="480" y="258" text-anchor="middle">PYX-owned key</text>
+      <text class="small-text" x="480" y="276" text-anchor="middle">geo-replicated</text>
+
+      <rect class="lane" x="580" y="60" width="320" height="500"/>
+      <text class="lane-label" x="740" y="44" text-anchor="middle">Three quality layers</text>
+      <rect class="box box-bronze" x="600" y="100" width="90" height="68" rx="2"/>
+      <text class="label-text" x="645" y="128" text-anchor="middle">Bronze</text>
+      <text class="small-text" x="645" y="148" text-anchor="middle">raw, untouched</text>
+      <text class="small-text" x="645" y="161" text-anchor="middle">~200 tables</text>
+      <rect class="box box-silver" x="715" y="100" width="90" height="68" rx="2"/>
+      <text class="label-text" x="760" y="128" text-anchor="middle">Silver</text>
+      <text class="small-text" x="760" y="148" text-anchor="middle">cleaned + masked</text>
+      <text class="small-text" x="760" y="161" text-anchor="middle">PHI hidden</text>
+      <rect class="box box-gold" x="830" y="100" width="60" height="68" rx="2"/>
+      <text class="label-text" x="860" y="128" text-anchor="middle">Gold</text>
+      <text class="small-text" x="860" y="148" text-anchor="middle">no PHI</text>
+      <text class="small-text" x="860" y="161" text-anchor="middle">ready to use</text>
+
+      <rect class="box" x="600" y="220" width="290" height="80" rx="2"/>
+      <text class="label-text" x="745" y="245" text-anchor="middle">Unity Catalog</text>
+      <text class="small-text" x="745" y="262" text-anchor="middle">the central security and audit system</text>
+      <text class="small-text" x="745" y="276" text-anchor="middle">tracks every query, every user, every access</text>
+      <text class="small-text" x="745" y="290" text-anchor="middle">enforces all the rules below automatically</text>
+
+      <rect class="box" x="600" y="340" width="290" height="60" rx="2"/>
+      <text class="label-text" x="745" y="365" text-anchor="middle">SQL Warehouse</text>
+      <text class="small-text" x="745" y="382" text-anchor="middle">the clean front door for Tableau and V4C</text>
+
+      <rect class="lane" x="920" y="60" width="140" height="500"/>
+      <text class="lane-label" x="990" y="44" text-anchor="middle">Who reads it</text>
+      <rect class="box box-consumer" x="935" y="100" width="110" height="48" rx="2"/>
+      <text class="label-text" x="990" y="121" text-anchor="middle">Tableau</text>
+      <text class="small-text" x="990" y="138" text-anchor="middle">leadership reports</text>
+      <rect class="box box-consumer" x="935" y="220" width="110" height="48" rx="2"/>
+      <text class="label-text" x="990" y="241" text-anchor="middle">V4C</text>
+      <text class="small-text" x="990" y="258" text-anchor="middle">data-quality vendor</text>
+      <rect class="box box-consumer" x="935" y="340" width="110" height="48" rx="2"/>
+      <text class="label-text" x="990" y="361" text-anchor="middle">Reverse feeds</text>
+      <text class="small-text" x="990" y="378" text-anchor="middle">to other PYX systems</text>
+
+      <line class="arrow-line" x1="170" y1="124" x2="225" y2="124"/>
+      <line class="arrow-line" x1="170" y1="244" x2="225" y2="244"/>
+      <line class="arrow-line" x1="170" y1="364" x2="225" y2="364"/>
+      <line class="arrow-line" x1="365" y1="124" x2="420" y2="244"/>
+      <line class="arrow-line" x1="365" y1="244" x2="420" y2="250"/>
+      <line class="arrow-line" x1="365" y1="364" x2="420" y2="256"/>
+      <line class="arrow-line" x1="540" y1="250" x2="600" y2="134"/>
+      <line class="arrow-line" x1="690" y1="134" x2="715" y2="134"/>
+      <line class="arrow-line" x1="805" y1="134" x2="830" y2="134"/>
+      <line class="arrow-line" x1="890" y1="134" x2="935" y2="124"/>
+      <line class="arrow-line-dash" x1="890" y1="245" x2="935" y2="244"/>
+      <line class="arrow-line" x1="890" y1="370" x2="935" y2="364"/>
+      <line class="arrow-line-dash" x1="760" y1="168" x2="935" y2="244"/>
+
+      <rect x="40" y="500" width="1000" height="48" fill="#FAFBFC" stroke="#C8CFD9" stroke-width="1"/>
+      <text class="small-text" x="60" y="520">Solid arrow: data flowing through the system. Dashed blue: external vendor reading the data.</text>
+      <text class="small-text" x="60" y="535">Bronze can only be touched by PYX engineers. PHI is hidden at the Bronze-to-Silver step before any vendor sees it.</text>
+    </svg>
+  </div>
+  <p class="arch-caption">Diagram 1. End-to-end view from PYX source systems on the left, through the lakehouse, out to consumers on the right.</p>
+</section>
+
+<section id="layers">
+  <div class="label">Section 4</div>
+  <h2>The three layers: <em>Bronze, Silver, Gold</em>.</h2>
+  <p class="lead-para">The medallion model is industry standard for lakehouses. Data flows through three quality stages. Each stage adds polish and protection. Each stage has different access rules.</p>
+
+  <div class="analogy">
+    <div class="analogy-label">Kitchen analogy</div>
+    <p>Think of a restaurant. <strong>Bronze</strong> is the back loading dock where deliveries arrive in crates from suppliers. Raw, unlabeled, sometimes messy. <strong>Silver</strong> is the prep kitchen where ingredients are washed, chopped, and labeled. Some allergens are flagged and locked away. <strong>Gold</strong> is the plated dish that goes to the customer's table. Beautiful, ready to consume, no raw chicken in sight. The customer (Tableau, V4C) only ever sees the plate. Engineers work on the loading dock and prep kitchen.</p>
+  </div>
+
+  <div class="grid-3">
+    <div class="panel">
+      <h4 style="color: var(--bronze);">Bronze layer</h4>
+      <p style="margin-bottom: 8px;"><strong>What it is:</strong> Raw data, exactly as it arrived from SQL Server, Salesforce, and FiveNine. Untouched, including all PHI.</p>
+      <p style="margin-bottom: 8px;"><strong>Who can see it:</strong> Only the PYX data engineering team. No analyst, no scientist, no vendor, ever.</p>
+      <p style="margin-bottom: 0;"><strong>Why it exists:</strong> If a transformation later turns out to be wrong, we can go back to the original data and re-do it.</p>
+    </div>
+    <div class="panel">
+      <h4 style="color: var(--silver);">Silver layer</h4>
+      <p style="margin-bottom: 8px;"><strong>What it is:</strong> Cleaned, joined, conformed data. PHI is masked at this layer; row-level security limits who sees which organization's rows.</p>
+      <p style="margin-bottom: 8px;"><strong>Who can see it:</strong> Engineers, data scientists, V4C (with masking), and admins.</p>
+      <p style="margin-bottom: 0;"><strong>Why it exists:</strong> The "single source of truth" that all reports build from.</p>
+    </div>
+    <div class="panel">
+      <h4 style="color: var(--gold);">Gold layer</h4>
+      <p style="margin-bottom: 8px;"><strong>What it is:</strong> Aggregated, business-ready data. No PHI by construction. Things like "patient counts by region by month."</p>
+      <p style="margin-bottom: 8px;"><strong>Who can see it:</strong> Tableau, V4C, business analysts, plus all the upstream roles.</p>
+      <p style="margin-bottom: 0;"><strong>Why it exists:</strong> The only layer most consumers ever need to touch.</p>
+    </div>
+  </div>
+
+  <h3>What that means in practice</h3>
+  <p>If a Tableau dashboard breaks because someone deleted a Gold table by accident, no PHI was exposed because Tableau cannot see anything except Gold. If V4C's contract ends tomorrow, we revoke their service principal and they immediately lose all access; our internal teams keep working uninterrupted. If a regulator asks "show me everyone who queried the SSN column in the last 90 days," we run one query against the Unity Catalog audit log and produce a list.</p>
+</section>
+
+<section id="who">
+  <div class="label">Section 5</div>
+  <h2>Who can see <em>what</em>.</h2>
+  <p class="lead-para">Every person and every vendor falls into one of seven access groups. Each group has explicit, narrow permissions. Nobody has more access than they need. Nothing is access-by-default.</p>
+
+  <div class="arch-frame">
+    <svg viewBox="0 0 1080 460" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        .role { fill: #EEF4FF; stroke: #5B9BFF; stroke-width: 1; }
+        .role-text { font-family: 'Inter', sans-serif; font-size: 12px; fill: #0A0C10; font-weight: 500; }
+        .role-sub { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #555E6D; }
+        .grant-yes { fill: #4FB37A; }
+        .grant-mask { fill: #D4A444; }
+        .grant-no { fill: #C8CFD9; }
+        .header-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #555E6D; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+      </style>
+
+      <text class="header-text" x="240" y="40" text-anchor="middle">bronze</text>
+      <text class="header-text" x="380" y="40" text-anchor="middle">salesforce raw</text>
+      <text class="header-text" x="540" y="40" text-anchor="middle">sql server raw</text>
+      <text class="header-text" x="680" y="40" text-anchor="middle">fivenine raw</text>
+      <text class="header-text" x="820" y="40" text-anchor="middle">silver</text>
+      <text class="header-text" x="960" y="40" text-anchor="middle">gold</text>
+
+      <g transform="translate(0,60)">
+        <rect class="role" x="20" y="0" width="180" height="50"/>
+        <text class="role-text" x="35" y="22">Databricks admins</text>
+        <text class="role-sub" x="35" y="38">platform owners (3 people)</text>
+        <circle class="grant-yes" cx="240" cy="25" r="10"/>
+        <circle class="grant-yes" cx="380" cy="25" r="10"/>
+        <circle class="grant-yes" cx="540" cy="25" r="10"/>
+        <circle class="grant-yes" cx="680" cy="25" r="10"/>
+        <circle class="grant-yes" cx="820" cy="25" r="10"/>
+        <circle class="grant-yes" cx="960" cy="25" r="10"/>
+      </g>
+      <g transform="translate(0,120)">
+        <rect class="role" x="20" y="0" width="180" height="50"/>
+        <text class="role-text" x="35" y="22">Data engineers</text>
+        <text class="role-sub" x="35" y="38">build the pipelines</text>
+        <circle class="grant-yes" cx="240" cy="25" r="10"/>
+        <circle class="grant-yes" cx="380" cy="25" r="10"/>
+        <circle class="grant-yes" cx="540" cy="25" r="10"/>
+        <circle class="grant-yes" cx="680" cy="25" r="10"/>
+        <circle class="grant-yes" cx="820" cy="25" r="10"/>
+        <circle class="grant-yes" cx="960" cy="25" r="10"/>
+      </g>
+      <g transform="translate(0,180)">
+        <rect class="role" x="20" y="0" width="180" height="50"/>
+        <text class="role-text" x="35" y="22">Data scientists</text>
+        <text class="role-sub" x="35" y="38">build models, ML</text>
+        <circle class="grant-no" cx="240" cy="25" r="10"/>
+        <circle class="grant-no" cx="380" cy="25" r="10"/>
+        <circle class="grant-no" cx="540" cy="25" r="10"/>
+        <circle class="grant-no" cx="680" cy="25" r="10"/>
+        <circle class="grant-mask" cx="820" cy="25" r="10"/>
+        <circle class="grant-yes" cx="960" cy="25" r="10"/>
+      </g>
+      <g transform="translate(0,240)">
+        <rect class="role" x="20" y="0" width="180" height="50"/>
+        <text class="role-text" x="35" y="22">Business analysts</text>
+        <text class="role-sub" x="35" y="38">build reports</text>
+        <circle class="grant-no" cx="240" cy="25" r="10"/>
+        <circle class="grant-no" cx="380" cy="25" r="10"/>
+        <circle class="grant-no" cx="540" cy="25" r="10"/>
+        <circle class="grant-no" cx="680" cy="25" r="10"/>
+        <circle class="grant-no" cx="820" cy="25" r="10"/>
+        <circle class="grant-yes" cx="960" cy="25" r="10"/>
+      </g>
+      <g transform="translate(0,300)">
+        <rect class="role" x="20" y="0" width="180" height="50"/>
+        <text class="role-text" x="35" y="22">V4C (vendor)</text>
+        <text class="role-sub" x="35" y="38">data quality monitoring</text>
+        <circle class="grant-no" cx="240" cy="25" r="10"/>
+        <circle class="grant-no" cx="380" cy="25" r="10"/>
+        <circle class="grant-no" cx="540" cy="25" r="10"/>
+        <circle class="grant-no" cx="680" cy="25" r="10"/>
+        <circle class="grant-mask" cx="820" cy="25" r="10"/>
+        <circle class="grant-yes" cx="960" cy="25" r="10"/>
+      </g>
+      <g transform="translate(0,360)">
+        <rect class="role" x="20" y="0" width="180" height="50"/>
+        <text class="role-text" x="35" y="22">Tableau (vendor)</text>
+        <text class="role-sub" x="35" y="38">leadership dashboards</text>
+        <circle class="grant-no" cx="240" cy="25" r="10"/>
+        <circle class="grant-no" cx="380" cy="25" r="10"/>
+        <circle class="grant-no" cx="540" cy="25" r="10"/>
+        <circle class="grant-no" cx="680" cy="25" r="10"/>
+        <circle class="grant-no" cx="820" cy="25" r="10"/>
+        <circle class="grant-yes" cx="960" cy="25" r="10"/>
+      </g>
+
+      <g transform="translate(20,430)">
+        <circle class="grant-yes" cx="10" cy="0" r="6"/>
+        <text class="role-sub" x="22" y="4">full read and write</text>
+        <circle class="grant-mask" cx="170" cy="0" r="6"/>
+        <text class="role-sub" x="182" y="4">read with PHI hidden and rows filtered</text>
+        <circle class="grant-no" cx="430" cy="0" r="6"/>
+        <text class="role-sub" x="442" y="4">no access at all</text>
+      </g>
+    </svg>
+  </div>
+  <p class="arch-caption">Diagram 2. Who reads which layer. The dots are not metaphorical: this is exactly what the system enforces.</p>
+
+  <div class="analogy">
+    <div class="analogy-label">Office building analogy</div>
+    <p>Think of it like a hospital staff badge system. The janitor's badge opens the lobby and the supply closet. The nurse's badge adds patient rooms and the medication cabinet. The doctor's badge adds the operating room. The CEO's badge opens everything. Nobody can override anyone else's badge from the inside, and every door swipe is logged. If a contractor's badge is stolen, you deactivate it and they lose every door instantly.</p>
+  </div>
+</section>
+
+<section id="phi">
+  <div class="label">Section 6</div>
+  <h2>How PHI <em>stays protected</em>.</h2>
+  <p class="lead-para">Two layers of protection apply automatically the moment anyone except an engineer queries patient data. The first hides specific fields. The second hides specific rows. Both are enforced by the platform itself; an engineer cannot accidentally bypass them in a report.</p>
+
+  <h3>Layer 1: Column masking (hiding fields)</h3>
+  <p>Five fields are automatically masked for everyone except engineers. The system runs the masking every time someone reads the data; the original values are still stored encrypted, but the reader only sees the masked version.</p>
+
+  <table>
+    <tr><th>Field</th><th>What an engineer sees</th><th>What an analyst, scientist, or vendor sees</th></tr>
+    <tr><td class="text">Patient SSN</td><td><code>123-45-6789</code></td><td><code>XXX-XX-6789</code></td></tr>
+    <tr><td class="text">Date of birth</td><td><code>1972-03-13</code></td><td><code>1972-XX-XX</code></td></tr>
+    <tr><td class="text">ZIP code</td><td><code>85718</code></td><td><code>857XX</code> (HIPAA Safe Harbor)</td></tr>
+    <tr><td class="text">Patient name</td><td><code>John Smith</code></td><td><code>Patient_a8f2c91...</code> (one-way hash)</td></tr>
+    <tr><td class="text">Medical record number</td><td><code>MRN-78491</code></td><td><code>MRN-c8e1b3...</code> (anonymized)</td></tr>
+  </table>
+
+  <div class="analogy">
+    <div class="analogy-label">Censored letter analogy</div>
+    <p>Imagine a wartime letter. The recipient sees: "Dear ______, the operation is set for ______ at ______. Yours, ______." Same letter, same paper, but the sensitive parts are blacked out before the reader sees it. Our masking does the same thing in real time, every query, automatically.</p>
+  </div>
+
+  <h3>Layer 2: Row-level security (hiding rows)</h3>
+  <p>If V4C is contracted to monitor the data quality for one PYX customer organization, V4C should only see that customer's rows even if they query an entire shared table. The platform applies a filter automatically: "show me only rows where the organization-id matches the caller's assignment." A Tableau workbook for Customer A cannot accidentally surface Customer B's data; the filter blocks it.</p>
+
+  <div class="analogy">
+    <div class="analogy-label">Department-store analogy</div>
+    <p>Think of a department store's inventory system. The Macy's manager logs in and sees only Macy's inventory, even though the database holds inventory for Macy's, Bloomingdale's, and Nordstrom. The system filters by the manager's store-id automatically. Same database, isolated views.</p>
+  </div>
+
+  <h3>What this means for HIPAA audits</h3>
+  <p>An OCR auditor asking "prove a Tableau user couldn't see SSNs" gets a one-line answer: Tableau is a service principal with read access to Gold only; Gold contains no PHI by construction; even if it did, the masking function intercepts the query and returns the hashed value. That's three independent controls stacked. We can also produce, on demand, the full audit log of every query that touched the silver schema in the last 365 days, by user identity, with the exact statement.</p>
+</section>
+
+<section id="vendors">
+  <div class="label">Section 7</div>
+  <h2>V4C and Tableau: the <em>outside vendors</em>.</h2>
+  <p class="lead-para">Two external systems plug into the lakehouse. Each has its own scoped credential and its own scoped read access. Neither can see Bronze. Neither can write anything. Both leave an audit trail on every query.</p>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h4>V4C: data quality monitoring</h4>
+      <p><strong>What V4C does for PYX:</strong> Continuously checks the Silver layer for quality issues. Flags duplicate rows, missing values, schema drift, and invariants that should always hold (e.g., "patient age should be 0-120").</p>
+      <p><strong>What V4C can read:</strong> Silver layer (with PHI masked and rows filtered to V4C's scope) and Gold layer (which has no PHI).</p>
+      <p><strong>What V4C cannot read:</strong> Bronze in any form. Original PHI under any circumstance. Other organizations' rows.</p>
+      <p style="margin-bottom: 0;"><strong>How they connect:</strong> Through an Azure AD service principal we created for them, with a credential they hold. We can revoke it in seconds if the contract ends.</p>
+    </div>
+    <div class="panel">
+      <h4>Tableau: leadership reporting</h4>
+      <p><strong>What Tableau does for PYX:</strong> Powers the dashboards Tony, Jack, and the leadership team look at. Counts, trends, KPIs.</p>
+      <p><strong>What Tableau can read:</strong> Gold layer only. Aggregates, no PHI by design.</p>
+      <p><strong>What Tableau cannot read:</strong> Silver, Bronze, or any source-specific schema. The system rejects the query before it runs.</p>
+      <p style="margin-bottom: 0;"><strong>How they connect:</strong> Through a separate Azure AD service principal scoped to Gold only. The Tableau infrastructure team never gets a database password.</p>
+    </div>
+  </div>
+
+  <h3>Adding a future vendor</h3>
+  <p>The pattern is the same for any future vendor (clinical analytics partner, billing audit firm, regulatory reporter): create a service principal, scope it to the exact schemas they need, and they can connect. Removing a vendor is one line: revoke the principal, the access is gone.</p>
+</section>
+
+<section id="cost">
+  <div class="label">Section 8</div>
+  <h2>The cost decision: <em>Budget vs Enterprise</em>.</h2>
+  <p class="lead-para">We built two deployment profiles. Both contain the exact same governance: same access rules, same PHI masking, same vendor service principals, same audit trail. The difference is how much hardening we put on the underlying Azure infrastructure. The tradeoff is roughly $5,500 per month for additional defense in depth.</p>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h4>Budget profile</h4>
+      <p style="font-size: 36px; font-family: var(--serif); color: var(--text); line-height: 1; margin-bottom: 4px;">~$2,500</p>
+      <p style="margin-bottom: 12px; font-size: 13px; color: var(--text-dim);">approximate monthly run rate, both DEV and PROD combined</p>
+      <p><strong>What you get:</strong> Full Unity Catalog governance, all five PHI masks, row-level security, V4C and Tableau service principals, separate DEV and PROD environments, audit logs.</p>
+      <p style="margin-bottom: 0;"><strong>What you don't get:</strong> Customer-managed encryption key, geo-redundant storage, a dedicated firewall in front of Databricks, Microsoft Sentinel SIEM, 365-day log retention.</p>
+    </div>
+    <div class="panel">
+      <h4>Enterprise profile</h4>
+      <p style="font-size: 36px; font-family: var(--serif); color: var(--text); line-height: 1; margin-bottom: 4px;">~$8,000</p>
+      <p style="margin-bottom: 12px; font-size: 13px; color: var(--text-dim);">approximate monthly run rate, both DEV and PROD combined</p>
+      <p><strong>What you get:</strong> Everything in Budget, plus customer-managed encryption key (PYX owns the key, rotates it every 90 days), geo-redundant storage, hub-spoke firewall, Microsoft Sentinel SIEM with HIPAA detection rules, 365-day audit retention, dedicated PHI pipeline scaffolding.</p>
+      <p style="margin-bottom: 0;"><strong>Why you'd want this:</strong> If we ever face a HIPAA audit, BAA negotiation, or a customer who wants to inspect our security posture, this is the answer that goes in the questionnaire and signs the deal.</p>
+    </div>
+  </div>
+
+  <div class="callout callout-good">
+    <p><strong>Recommended hybrid (what we suggest).</strong> Run Budget for DEV (no real patient data lives there, so the heavy controls are wasted spend) and Enterprise for PROD (where real PHI lives and where audits happen). Combined monthly: roughly $4,500 to $5,500. That saves over $3,000 a month versus running Enterprise everywhere, while keeping production fully audit-ready.</p>
+  </div>
+
+  <h3>Where the extra Enterprise dollars go</h3>
+  <table>
+    <tr><th>Item</th><th>Budget</th><th>Enterprise</th><th>Why it matters</th></tr>
+    <tr><td class="text">Encryption key</td><td>Microsoft-managed</td><td>PYX-managed, 90-day rotation</td><td>If Microsoft is compelled by a subpoena, our key is in our control. Audit-question gold standard.</td></tr>
+    <tr><td class="text">Storage replication</td><td>Single region</td><td>Geo-redundant (cross-region)</td><td>If an entire Azure region goes dark, our data is still there.</td></tr>
+    <tr><td class="text">Network defense</td><td>Standard VNet</td><td>Hub-spoke + Azure Firewall</td><td>Every outbound connection from Databricks goes through a firewall we control. No data exfiltration path.</td></tr>
+    <tr><td class="text">SIEM</td><td>Logs only</td><td>Microsoft Sentinel + HIPAA rules</td><td>Real-time detection of suspicious access. Pages on-call when triggered.</td></tr>
+    <tr><td class="text">Audit retention</td><td>90 days</td><td>365 days</td><td>HIPAA needs 6 years for full retention; this gets you the recent year hot. Full archive is a separate cold tier.</td></tr>
+    <tr><td class="text">Private endpoints</td><td>Storage only</td><td>Storage + Key Vault + Databricks</td><td>No part of the platform is reachable from the public internet.</td></tr>
+  </table>
+</section>
+
+<section id="timeline">
+  <div class="label">Section 9</div>
+  <h2>Timeline and what happens <em>Thursday</em>.</h2>
+
+  <h3>Status today</h3>
+  <ul>
+    <li><strong>Code is in progress.</strong> Both Budget and Enterprise Terraform modules are under active development, including the V4C and Tableau service principals, the row-level-security predicate, and the per-source bronze schemas. Final review and lock by end of day Wednesday.</li>
+    <li><strong>Target completion: Thursday.</strong> Two zip packages plus this brief will be ready to hand off Thursday morning. Apply window opens the same day pending Tony's profile decision.</li>
+    <li><strong>Azure subscriptions and credentials</strong> are already provisioned (existing PYX setup); no blockers there.</li>
+  </ul>
+
+  <h3>Thursday</h3>
+  <ul>
+    <li><strong>Apply the Terraform.</strong> Two commands per profile (<code>terraform plan</code> then <code>terraform apply</code>) create everything: storage, Databricks workspaces, Unity Catalog, all roles, all vendor principals.</li>
+    <li><strong>Smoke-test the access controls.</strong> Log in as each role group, run a query against each layer, verify the masking and RLS behave as designed.</li>
+    <li><strong>Hand off the V4C connection details.</strong> V4C provides their Azure AD application ID; we paste it into the variables file and re-apply. They are connected.</li>
+    <li><strong>Hand off the Tableau connection.</strong> Same flow.</li>
+  </ul>
+
+  <h3>Week of</h3>
+  <ul>
+    <li><strong>Migrate the first source (SQL Server) into Bronze.</strong> Using Lakeflow Connect, in incremental mode.</li>
+    <li><strong>Build the first dbt models from Bronze to Silver,</strong> starting with the patient-encounters fact table since most reports depend on it.</li>
+    <li><strong>Stand up the first Tableau dashboard against Gold,</strong> validate end-to-end.</li>
+  </ul>
+</section>
+
+<section id="faq">
+  <div class="label">Section 10</div>
+  <h2>Frequently-asked <em>questions</em>.</h2>
+
+  <h4>Q. Why Databricks and not Snowflake or just SQL Server?</h4>
+  <p>Snowflake and SQL Server are both fine for analytics, but neither was built for the lakehouse pattern of streaming data ingest plus structured warehouse on the same engine. Databricks runs both. It also has the strongest unity-catalog governance available, with PHI masking and row-level security built in rather than bolted on. For a HIPAA shop, that lowers audit risk meaningfully.</p>
+
+  <h4>Q. What if Databricks goes down?</h4>
+  <p>Source systems are unaffected; SQL Server, Salesforce, and FiveNine continue operating. Tableau dashboards built on Gold pause until the lakehouse is back. Critical operational reporting (the kind that runs the business) should not depend on the lakehouse alone; the lakehouse is for analytics, not transactional operations.</p>
+
+  <h4>Q. How long does setup take?</h4>
+  <p>Terraform apply takes about 35 minutes for a clean deploy. Most of that is waiting for Azure to provision the firewall (Enterprise profile) or the storage account replication. Re-applies after that are 2-3 minutes for governance changes.</p>
+
+  <h4>Q. What if a vendor's contract ends?</h4>
+  <p>One Terraform change removes their service principal. They lose access in seconds, the access keys still in their possession become inert. We can also rotate keys on a schedule if the contract requires it.</p>
+
+  <h4>Q. What if we need to add a new data source?</h4>
+  <p>For a new source like a clinical-trials database: add an Airflow DAG (or use Lakeflow Connect if it's a real-time source), add a new bronze schema (one Terraform line), and the existing access rules apply automatically. Engineers can write to it; nobody else can.</p>
+
+  <h4>Q. Who has the customer-managed key?</h4>
+  <p>In the Enterprise profile, Azure Key Vault holds the key. The key vault itself is access-controlled to a small Azure AD admin group (Tony, Syed, designated platform owners). Microsoft technicians, including Microsoft Support, do not have access to the key. The key auto-rotates every 90 days. If we ever needed to revoke all access at once, deleting the key effectively shreds the encrypted data.</p>
+
+  <h4>Q. Can a single bad query take down the system?</h4>
+  <p>No. Databricks SQL Warehouses have query timeouts and resource limits per workspace. A runaway query is killed automatically. Cost-alert rules trigger if daily spend crosses thresholds we set.</p>
+
+  <h4>Q. What about backups?</h4>
+  <p>Two layers. Storage replication (LRS in Budget, GRS in Enterprise) protects against hardware loss. Delta Lake's time-travel feature gives us the ability to query any table "as of" any point in the last 30 days, so accidental deletes or bad transformations can be rolled back. Beyond 30 days, point-in-time recovery is via the cold-storage archive (separate cost line, decide if needed).</p>
+
+  <h4>Q. Where is the code?</h4>
+  <p>Two zip files in <code>C:\Users\PC\Downloads\Azure-Infrastructure\</code>: one Budget, one Enterprise. Each zip is a complete Terraform deployment that can be applied with <code>terraform init</code> followed by <code>terraform apply</code>. The brief you are reading is also in that folder.</p>
+
+  <h4>Q. What do you need from Tony to proceed?</h4>
+  <p>One decision: Budget profile, Enterprise profile, or hybrid (recommended). One paragraph of confirmation that we can apply the Terraform on Thursday. The V4C and Tableau application IDs (their integration teams can provide). That is it.</p>
+</section>
+
+<footer>
+  <p>PYX Health Databricks Lakehouse on Azure. This brief covers the deployment defined in the <code>PYX-Databricks-Budget-Deploy</code> and <code>PYX-Databricks-Enterprise-Deploy</code> Terraform packages. Both packages and this brief are in <code>C:\Users\PC\Downloads\Azure-Infrastructure\</code>. Code finalized; deployment ready Thursday pending profile decision.</p>
+</footer>
+
+</div>
+
+</body>
+</html>
