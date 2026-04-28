@@ -43,6 +43,51 @@ function Step($title) {
 
 function Has-Cmd($name) { return [bool](Get-Command $name -ErrorAction SilentlyContinue) }
 
+function _AzList([scriptblock]$Block) {
+    # Run an az -o json command and return a normalized array of objects.
+    # Handles PSv5.1 quirks: multi-line JSON captured as string[], and the
+    # "wrapper object with array-typed properties" pattern that the older
+    # front-door extension sometimes produces.
+    $text = & $Block 2>$null | Out-String
+    if ([string]::IsNullOrWhiteSpace($text)) { return @() }
+    try { $parsed = $text | ConvertFrom-Json -ErrorAction Stop } catch { return @() }
+    if ($null -eq $parsed) { return @() }
+    $arr = if ($parsed -is [array]) { @($parsed) } else { @($parsed) }
+
+    # Wrapper-object detection: 1 object whose properties are equal-length arrays = explode
+    if ($arr.Count -eq 1 -and $arr[0] -is [PSCustomObject]) {
+        $obj = $arr[0]
+        $arrProps = @($obj.PSObject.Properties | Where-Object { $_.Value -is [array] -and $_.Value.Count -gt 1 })
+        if ($arrProps.Count -ge 2) {
+            $lens = @($arrProps | ForEach-Object { $_.Value.Count } | Sort-Object -Unique)
+            if ($lens.Count -eq 1) {
+                $n = $lens[0]
+                $exploded = @()
+                for ($i = 0; $i -lt $n; $i++) {
+                    $newObj = New-Object PSObject
+                    foreach ($p in $obj.PSObject.Properties) {
+                        if ($p.Value -is [array] -and $p.Value.Count -eq $n) {
+                            $newObj | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value[$i]
+                        } else {
+                            $newObj | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value
+                        }
+                    }
+                    $exploded += $newObj
+                }
+                return ,$exploded
+            }
+        }
+    }
+    return ,$arr
+}
+
+function _AzShow([scriptblock]$Block) {
+    # Run an az -o json show command, return a single object (or $null).
+    $text = & $Block 2>$null | Out-String
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+    try { return $text | ConvertFrom-Json -ErrorAction Stop } catch { return $null }
+}
+
 # ----------------------------------------------------------------------------
 Step "Phase 0 - Pre-flight"
 # ----------------------------------------------------------------------------
@@ -71,9 +116,8 @@ Log "front-door extension ready" "OK"
 # ----------------------------------------------------------------------------
 Step "Phase 1 - Inventory Classic hipyx custom domains"
 # ----------------------------------------------------------------------------
-$classicEndpointsJson = az network front-door frontend-endpoint list --resource-group $ResourceGroup --front-door-name $ClassicProfile -o json 2>$null
-if (-not $classicEndpointsJson) { Log "Could not enumerate Classic profile - aborting" "ERR"; exit 2 }
-$classicEndpoints = @($classicEndpointsJson | ConvertFrom-Json)
+$classicEndpoints = _AzList { az network front-door frontend-endpoint list --resource-group $ResourceGroup --front-door-name $ClassicProfile -o json }
+if ($classicEndpoints.Count -eq 0) { Log "Could not enumerate Classic profile - aborting" "ERR"; exit 2 }
 
 $customEndpoints = @($classicEndpoints | Where-Object { $_.hostName -and $_.hostName -notlike "*.azurefd.net" })
 Log ("Found {0} frontend endpoints on Classic ({1} custom domains, {2} default azurefd.net)" -f $classicEndpoints.Count, $customEndpoints.Count, ($classicEndpoints.Count - $customEndpoints.Count)) "OK"
@@ -91,8 +135,7 @@ foreach ($e in $customEndpoints) {
 # ----------------------------------------------------------------------------
 Step "Phase 2 - Inventory existing Standard hipyx-std domains (skip duplicates)"
 # ----------------------------------------------------------------------------
-$standardDomainsJson = az afd custom-domain list --resource-group $ResourceGroup --profile-name $StandardProfile -o json 2>$null
-$standardDomains = if ($standardDomainsJson) { @($standardDomainsJson | ConvertFrom-Json) } else { @() }
+$standardDomains = _AzList { az afd custom-domain list --resource-group $ResourceGroup --profile-name $StandardProfile -o json }
 $standardHostnames = @{}
 foreach ($d in $standardDomains) {
     if ($d.hostName) { $standardHostnames[$d.hostName.ToLower()] = $d }
@@ -151,8 +194,7 @@ $skipped    = 0
 $failed     = 0
 
 # Pre-fetch Classic routing rules + backend pools once
-$classicRulesJson = az network front-door routing-rule list --resource-group $ResourceGroup --front-door-name $ClassicProfile -o json 2>$null
-$classicRules = if ($classicRulesJson) { @($classicRulesJson | ConvertFrom-Json) } else { @() }
+$classicRules = _AzList { az network front-door routing-rule list --resource-group $ResourceGroup --front-door-name $ClassicProfile -o json }
 
 foreach ($p in $plan) {
     Log ""
@@ -164,17 +206,15 @@ foreach ($p in $plan) {
 
         # Still emit DNS records so user can verify what's in DNS
         $existing = $standardHostnames[$p.Hostname.ToLower()]
-        $cdShow = az afd custom-domain show --resource-group $ResourceGroup --profile-name $StandardProfile --custom-domain-name $existing.name -o json 2>$null | ConvertFrom-Json
+        $cdShow = _AzShow { az afd custom-domain show --resource-group $ResourceGroup --profile-name $StandardProfile --custom-domain-name $existing.name -o json }
         $existingTxt = $null
         if ($cdShow) { $existingTxt = $cdShow.validationProperties.validationToken }
 
         # Walk routes to find which endpoint this domain is bound to
         $existingCname = "UNKNOWN"
-        $epListJson = az afd endpoint list --resource-group $ResourceGroup --profile-name $StandardProfile -o json 2>$null
-        $epList = if ($epListJson) { @($epListJson | ConvertFrom-Json) } else { @() }
+        $epList = _AzList { az afd endpoint list --resource-group $ResourceGroup --profile-name $StandardProfile -o json }
         foreach ($ep in $epList) {
-            $routeListJson = az afd route list --resource-group $ResourceGroup --profile-name $StandardProfile --endpoint-name $ep.name -o json 2>$null
-            $routeList = if ($routeListJson) { @($routeListJson | ConvertFrom-Json) } else { @() }
+            $routeList = _AzList { az afd route list --resource-group $ResourceGroup --profile-name $StandardProfile --endpoint-name $ep.name -o json }
             foreach ($rt in $routeList) {
                 $domIds = @($rt.customDomains | ForEach-Object { $_.id })
                 if ($domIds -match [regex]::Escape("/customDomains/$($existing.name)")) {
@@ -213,13 +253,10 @@ foreach ($p in $plan) {
                 $rcType = $r.routeConfiguration.'@odata.type'
                 if ($rcType -match 'ForwardingConfiguration' -and $r.routeConfiguration.backendPool) {
                     $bpName = ($r.routeConfiguration.backendPool.id -split '/')[-1]
-                    $bpJson = az network front-door backend-pool show --resource-group $ResourceGroup --front-door-name $ClassicProfile --name $bpName -o json 2>$null
-                    if ($bpJson) {
-                        $bp = $bpJson | ConvertFrom-Json
-                        if ($bp.backends -and $bp.backends.Count -gt 0) {
-                            $originHost = $bp.backends[0].address
-                            Log ("  Classic backend pool: {0} -> origin host: {1}" -f $bpName, $originHost)
-                        }
+                    $bp = _AzShow { az network front-door backend-pool show --resource-group $ResourceGroup --front-door-name $ClassicProfile --name $bpName -o json }
+                    if ($bp -and $bp.backends -and $bp.backends.Count -gt 0) {
+                        $originHost = $bp.backends[0].address
+                        Log ("  Classic backend pool: {0} -> origin host: {1}" -f $bpName, $originHost)
                     }
                 } elseif ($rcType -match 'RedirectConfiguration') {
                     Log ("  Classic rule '{0}' is a redirect, not a forward - origin will use DefaultOriginHost or fail" -f $r.name) "WARN"
@@ -308,11 +345,9 @@ foreach ($p in $plan) {
 
     # Step 5.9 - Find or create origin group + origin
     $targetOG = $null
-    $ogListJson = az afd origin-group list --resource-group $ResourceGroup --profile-name $StandardProfile -o json 2>$null
-    $ogList = if ($ogListJson) { @($ogListJson | ConvertFrom-Json) } else { @() }
+    $ogList = _AzList { az afd origin-group list --resource-group $ResourceGroup --profile-name $StandardProfile -o json }
     foreach ($og in $ogList) {
-        $originsJson = az afd origin list --resource-group $ResourceGroup --profile-name $StandardProfile --origin-group-name $og.name -o json 2>$null
-        $origins = if ($originsJson) { @($originsJson | ConvertFrom-Json) } else { @() }
+        $origins = _AzList { az afd origin list --resource-group $ResourceGroup --profile-name $StandardProfile --origin-group-name $og.name -o json }
         foreach ($o in $origins) {
             if ($o.hostName -ieq $originHost) {
                 $targetOG = $og.name
