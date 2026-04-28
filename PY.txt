@@ -1,0 +1,2 @@
+az afd custom-domain list -g production --profile-name hipyx-std --query "[].{Name:name,Host:hostName,State:provisioningState,Domain:domainValidationState}" -o table
+az network front-door frontend-endpoint list -g production --front-door-name hipyx --query "[].{Name:name,Host:hostName,Cert:customHttpsConfiguration.protocolType}" -o table
