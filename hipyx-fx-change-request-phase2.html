@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Change Request - hipyx.com Front Door Migration (Phase 2)</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#11151C;max-width:1100px;margin:32px auto;padding:0 28px;line-height:1.55;font-size:14px}
+h1{font-size:22px;border-bottom:2px solid #1F3D7A;padding-bottom:8px;color:#1F3D7A;margin-bottom:6px}
+.subtitle{color:#555E6D;font-size:13px;margin-bottom:24px}
+h2{font-size:16px;color:#1F3D7A;border-bottom:1px solid #E5E8EE;padding-bottom:4px;margin-top:30px}
+h3{font-size:13px;color:#11151C;margin-top:16px;margin-bottom:4px}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+th{text-align:left;background:#F5F7FA;padding:8px 10px;border-bottom:2px solid #1F3D7A;color:#1F3D7A;font-weight:600;font-size:12.5px}
+td{padding:7px 10px;border-bottom:1px solid #E5E8EE;vertical-align:top}
+td.label{font-weight:600;color:#1F3D7A;width:25%;background:#F5F7FA}
+code{font-family:Consolas,monospace;font-size:12px;background:#F5F7FA;padding:1px 5px;border-radius:3px;color:#11151C}
+pre{background:#0F172A;color:#E2E8F0;padding:14px 16px;border-radius:6px;font-family:Consolas,monospace;font-size:12.5px;line-height:1.5;overflow-x:auto;margin:10px 0}
+pre code{background:transparent;color:inherit;padding:0}
+.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;color:#fff}
+.badge-amber{background:#A06A00}
+.badge-green{background:#1B6B3A}
+.badge-blue{background:#1F3D7A}
+.badge-grey{background:#555E6D}
+ul{margin:6px 0 10px 0;padding-left:24px}
+ul li{margin:3px 0}
+ol li{margin:5px 0}
+.box{background:#F5F7FA;border-left:3px solid #1F3D7A;padding:10px 14px;margin:14px 0;font-size:13px}
+.box-amber{background:#FFF8E1;border-left-color:#A06A00}
+.box-green{background:#EAF7EE;border-left-color:#1B6B3A}
+.box-red{background:#FBEAEA;border-left-color:#9B2226}
+.foot{margin-top:40px;padding-top:14px;border-top:1px solid #C8CFD9;color:#555E6D;font-size:11.5px}
+.toc{background:#F5F7FA;border:1px solid #E5E8EE;padding:14px 18px;margin:18px 0;font-size:13px}
+.toc ol{margin:4px 0 0 0;padding-left:22px;column-count:2;column-gap:30px}
+.toc li{margin:2px 0;break-inside:avoid}
+.toc a{color:#1F3D7A;text-decoration:none}
+.toc a:hover{text-decoration:underline}
+.kv{display:grid;grid-template-columns:200px 1fr;gap:6px 14px;font-size:13px;margin:6px 0}
+.kv b{color:#1F3D7A}
+</style>
+</head>
+<body>
+
+<h1>Change Request - hipyx.com Front Door Migration (Phase 2)</h1>
+<div class="subtitle">Production change request for the second and final phase of the Azure Front Door Classic-to-Standard migration on the hipyx Front Door profile. Phase 1 (<code>survey.farmboxrx.com</code>) was completed 2026-04-24. This CR covers Phase 2 (<code>www.hipyx.com</code>), scheduled for tonight at 22:00.</div>
+
+<table style="margin-bottom:18px">
+<tr><td class="label">Change ID</td><td>FX-MIGR-HIPYX-PHASE2</td></tr>
+<tr><td class="label">Submitted by</td><td>Syed Rizvi - PYX Production Engineering</td></tr>
+<tr><td class="label">Date submitted</td><td>2026-04-28</td></tr>
+<tr><td class="label">Requested window</td><td><b>Tonight, 2026-04-28, 22:00 - 23:00 (1-hour window)</b></td></tr>
+<tr><td class="label">Risk class</td><td><span class="badge badge-amber">Medium</span> - involves a brief outage window during the cutover</td></tr>
+<tr><td class="label">Reversibility</td><td><span class="badge badge-green">Reversible</span> - DNS-level rollback, traffic returns to Classic in &lt; 5 min</td></tr>
+<tr><td class="label">Customer impact</td><td>Brief unavailability (5-15 min) for <code>www.hipyx.com</code> during the cutover. No data impact.</td></tr>
+<tr><td class="label">Implementation tooling</td><td><span class="badge badge-blue">In final review</span> - automation script + rollback script + verification script all production-ready by window start</td></tr>
+</table>
+
+<div class="toc">
+<b>Contents</b>
+<ol>
+<li><a href="#sec1">Background and prior approval</a></li>
+<li><a href="#sec2">Why phased - and why www was not in Phase 1</a></li>
+<li><a href="#sec3">What is changing (before / after)</a></li>
+<li><a href="#sec4">Maintenance window and stakeholders</a></li>
+<li><a href="#sec5">Pre-flight checklist (T-30 min)</a></li>
+<li><a href="#sec6">Cutover runbook (T-0)</a></li>
+<li><a href="#sec7">DNS handoff procedure</a></li>
+<li><a href="#sec8">Verification commands</a></li>
+<li><a href="#sec9">Rollback plan and commands</a></li>
+<li><a href="#sec10">Risk assessment</a></li>
+<li><a href="#sec11">Success criteria</a></li>
+<li><a href="#sec12">Post-cutover and decommission</a></li>
+<li><a href="#sec13">Approval</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1.  Background and prior approval</h2>
+<p>The hipyx Front Door profile in the <code>production</code> resource group is on the Azure Front Door <b>Classic</b> SKU. Microsoft is retiring AFD Classic on <b>March 31, 2027</b>. Managed certificates on Classic profiles begin auto-migrating starting <b>April 10, 2026 (best effort)</b> and Classic-managed certs expire <b>April 14, 2026</b>. To keep ownership of the migration on our schedule rather than Microsoft's, the migration was approved as a phased move per domain on the hipyx Classic profile to a new Standard profile (<code>hipyx-std</code>).</p>
+
+<p>Phase 1 was approved and executed on <b>2026-04-24</b>: <code>survey.farmboxrx.com</code> moved cleanly from Classic <code>hipyx</code> to Standard <code>hipyx-std</code>, with WAF policy <code>hipyxWafPolicy</code>, managed cert in Approved state, and DNS handoff completed. Phase 2 (<code>www.hipyx.com</code>) was deferred from that window for risk reasons described below.</p>
+
+<h2 id="sec2">2.  Why phased - and why www was not in Phase 1</h2>
+<p>Running both domains in a single change window would have meant any failure on the second domain would extend the outage window for the entire profile. Phase 1 took the lower-traffic non-customer-facing domain first specifically so:</p>
+<ul>
+<li>The migration pattern (Classic detach -> Standard create -> WAF bind -> DNS handoff) could be validated end-to-end on a lower-impact domain.</li>
+<li>The Standard SKU's WAF behavior (<code>hipyxWafPolicy</code>, Detection mode, custom rules - Standard SKU does not support managed rules) was confirmed in production.</li>
+<li>The DNS handoff workflow with the DNS owner was rehearsed.</li>
+<li>If anything went wrong during Phase 1, <code>www.hipyx.com</code> was guaranteed unaffected.</li>
+<li>The runbook (<a href="#sec6">section 6</a>) and rollback procedure (<a href="#sec9">section 9</a>) were finalized using Phase 1 as the template.</li>
+</ul>
+<p>Phase 1 succeeded. The pattern is validated. Phase 2 now uses that validated pattern, with the additional safeguards listed in this CR.</p>
+
+<h2 id="sec3">3.  What is changing (before / after)</h2>
+<table>
+<thead><tr><th style="width:30%">Item</th><th style="width:35%">Before (current)</th><th style="width:35%">After (Phase 2 cutover)</th></tr></thead>
+<tbody>
+<tr><td><b>Front Door profile serving www.hipyx.com</b></td><td><code>hipyx</code> (AFD Classic, <code>Microsoft.Network/frontDoors</code>)</td><td><code>hipyx-std</code> (AFD Standard, <code>Microsoft.Cdn/profiles</code>)</td></tr>
+<tr><td><b>Frontend / custom domain</b></td><td>Classic frontend-endpoint <code>www-hipyx-com</code> on profile <code>hipyx</code></td><td>Standard custom-domain <code>www-hipyx-com</code> on profile <code>hipyx-std</code>, hosted on endpoint <code>pyx-fx-www-hipyx-com-ep</code></td></tr>
+<tr><td><b>Managed TLS certificate</b></td><td>Front Door Classic managed cert (auto-renewing, retires with Classic)</td><td>Front Door Standard managed cert (TLS 1.2 minimum, auto-renewing)</td></tr>
+<tr><td><b>WAF policy</b></td><td><code>wafPyxPwaProd</code> (Classic, <code>Microsoft.Network/frontdoorwebapplicationfirewallpolicies</code>)</td><td><code>hipyxWafPolicy</code> (Standard SKU, Detection mode, custom rules - already in production for Phase 1's <code>survey.farmboxrx.com</code>)</td></tr>
+<tr><td><b>Origin / backend</b></td><td><code>defaultPool</code> -> <code>appsvc-pwa-prod.azurewebsites.net</code></td><td>Standard origin group <code>og-www-hipyx-com</code> -> <code>appsvc-pwa-prod.azurewebsites.net</code> (same App Service, no application change)</td></tr>
+<tr><td><b>Routing</b></td><td>Two Classic routing rules: <code>httpToHttpsRedirect</code>, <code>defaultForwardingRule</code></td><td>One Standard route on the new endpoint with HTTPS redirect Enabled and the same forwarding behavior</td></tr>
+<tr><td><b>Public DNS for www.hipyx.com</b></td><td>CNAME -> <code>hipyx.azurefd.net</code></td><td>CNAME -> <code>pyx-fx-www-hipyx-com-ep-XXXX.z02.azurefd.net</code> (the new Standard endpoint hostname). TXT record <code>_dnsauth.www</code> added before the CNAME flip for AFD managed-cert validation.</td></tr>
+<tr><td><b>Subscription / RG</b></td><td colspan="2" style="text-align:center;background:#F5F7FA"><i>No change</i> - <code>e42e94b5-c6f8-4af0-a41b-16fda520de6e</code> / <code>production</code></td></tr>
+<tr><td><b>Application backend</b></td><td colspan="2" style="text-align:center;background:#F5F7FA"><i>No change</i> - same App Service, same code, same deployment</td></tr>
+<tr><td><b>Origin host header</b></td><td colspan="2" style="text-align:center;background:#F5F7FA"><i>Preserved</i> - Standard origin keeps the same Host header as Classic so the App Service routes identically</td></tr>
+</tbody></table>
+
+<h2 id="sec4">4.  Maintenance window and stakeholders</h2>
+<table>
+<tr><td class="label">Window start</td><td><b>2026-04-28 22:00 local</b></td></tr>
+<tr><td class="label">Window length</td><td>60 minutes (40 min for Azure-side hostname release + create, 20 min buffer for DNS / cert validation)</td></tr>
+<tr><td class="label">Executor</td><td>Syed Rizvi (PYX Production Engineering)</td></tr>
+<tr><td class="label">DNS owner on standby</td><td>Skye - primary. Alternate on-call DNS owner if Skye unavailable.</td></tr>
+<tr><td class="label">Approver</td><td>Tony Schlak - PYX Engineering Leadership</td></tr>
+<tr><td class="label">Communication channel</td><td>#incidents / #ops - status updates at: window open, cutover start, cert Approved, CNAME flip, verification green, window close.</td></tr>
+<tr><td class="label">Customer notice</td><td>None required - sub-15 min impact within standard maintenance tolerance.</td></tr>
+</table>
+
+<h2 id="sec5">5.  Pre-flight checklist (T-30 min)</h2>
+<p>The executor walks through this list 30 minutes before the cutover. Everything green = proceed at T-0. Any red = abort and reschedule.</p>
+<ol>
+<li>DNS owner is online and confirmed via Slack/Teams.</li>
+<li>Az CLI signed in, subscription set:
+<pre><code>az account show --query "{Name:name, Id:id, User:user.name}" -o json
+az account set --subscription e42e94b5-c6f8-4af0-a41b-16fda520de6e</code></pre>
+</li>
+<li><code>front-door</code> CLI extension current:
+<pre><code>az extension add --name front-door --upgrade</code></pre>
+</li>
+<li>Confirm Classic state for <code>www.hipyx.com</code>:
+<pre><code>az network front-door frontend-endpoint show -g production --front-door-name hipyx --name www-hipyx-com -o table</code></pre>
+Expect: <code>www.hipyx.com</code> visible, cert state <code>Enabled</code>.
+</li>
+<li>Confirm Standard state for <code>hipyx-std</code>:
+<pre><code>az afd custom-domain list -g production --profile-name hipyx-std -o table</code></pre>
+Expect: only <code>survey-farmboxrx-com</code> present (Phase 1).
+</li>
+<li>Confirm WAF policy <code>hipyxWafPolicy</code> exists:
+<pre><code>az network front-door waf-policy show -g production --name hipyxWafPolicy --query id -o tsv</code></pre>
+</li>
+<li>Confirm origin App Service is healthy:
+<pre><code>curl -I https://appsvc-pwa-prod.azurewebsites.net/</code></pre>
+</li>
+<li>Post #ops channel: "Cutover for www.hipyx.com starting at 22:00. Window 22:00-23:00."</li>
+</ol>
+
+<h2 id="sec6">6.  Cutover runbook (T-0)</h2>
+<p>The cutover is automated end-to-end by <code>hipyx-cutover-tonight.ps1</code>. The script handles: detach from Classic routing rules, delete Classic frontend-endpoint, wait for Azure hostname release (10 min), retry create on Standard up to 8 times with 5-min waits (40-min budget), build Standard endpoint + custom-domain + origin group + origin + route + WAF binding, output the DNS handoff package as both text and HTML.</p>
+
+<p>If all 8 attempts fail (Azure-side issue beyond the 40-min budget), the script auto-rolls back to Classic and exits cleanly. No partial state.</p>
+
+<h3>One command to start the cutover:</h3>
+<pre><code>cd C:\path\to\PYX-scripts
+.\hipyx-cutover-tonight.ps1</code></pre>
+
+<p>Defaults baked in (no parameters required for the standard cutover):</p>
+<div class="kv">
+<b>Subscription</b><span><code>e42e94b5-c6f8-4af0-a41b-16fda520de6e</code></span>
+<b>Resource group</b><span><code>production</code></span>
+<b>Classic profile</b><span><code>hipyx</code></span>
+<b>Standard profile</b><span><code>hipyx-std</code></span>
+<b>Hostname</b><span><code>www.hipyx.com</code></span>
+<b>Origin host</b><span><code>appsvc-pwa-prod.azurewebsites.net</code></span>
+<b>WAF policy</b><span><code>hipyxWafPolicy</code></span>
+<b>Hostname release wait</b><span>600 seconds (10 min)</span>
+<b>Retry wait between attempts</b><span>300 seconds (5 min)</span>
+<b>Max attempts</b><span>8</span>
+</div>
+
+<p>The script prompts for explicit <code>YES</code> confirmation before doing anything destructive. Pass <code>-NoConfirm</code> to skip the prompt during the maintenance window if desired.</p>
+
+<h3>What the script does, step by step:</h3>
+<ol>
+<li><b>Pre-flight</b> - confirms az CLI signed in, sets subscription, ensures front-door extension is current.</li>
+<li><b>Confirmation gate</b> - prompts <code>YES</code> to proceed (skippable with <code>-NoConfirm</code>).</li>
+<li><b>Phase A.1 - Detach from Classic</b> - removes <code>www-hipyx-com</code> reference from <code>httpToHttpsRedirect</code> and <code>defaultForwardingRule</code> Classic routing rules.</li>
+<li><b>Phase A.2 - Release the hostname</b> - deletes the Classic frontend-endpoint <code>www-hipyx-com</code>; waits 10 minutes for Azure to release the global hostname binding.</li>
+<li><b>Phase A.3 - Create on Standard</b> - up to 8 attempts spaced 5 minutes apart to create the custom-domain on <code>hipyx-std</code> with managed-cert and TLS 1.2 minimum. Total budget: 40 minutes.</li>
+<li><b>Phase A.4 - Build the rest</b> - Standard endpoint <code>pyx-fx-www-hipyx-com-ep</code>, origin group <code>og-www-hipyx-com</code>, origin pointing at <code>appsvc-pwa-prod.azurewebsites.net</code> (Host header preserved), route binding the custom-domain, security policy binding <code>hipyxWafPolicy</code>.</li>
+<li><b>Phase A.5 - DNS handoff</b> - script writes <code>dns-handoff-&lt;ts&gt;.html</code> and <code>.txt</code> to the Desktop report folder. The HTML is the file emailed to the DNS owner.</li>
+<li><b>Phase B (only if Phase A fails)</b> - automatic rollback. Recreates Classic frontend-endpoint, re-attaches to both routing rules, re-enables HTTPS managed cert. <code>www.hipyx.com</code> resumes on Classic AFD within 1-2 min.</li>
+</ol>
+
+<div class="box box-amber">
+<b>Outage window:</b> The user-visible outage is from Phase A.2 (Classic frontend-endpoint deletion) until either (a) the DNS owner publishes the new CNAME after cert is Approved, or (b) the rollback completes and Classic resumes serving. Expected 5-15 min real-time.
+</div>
+
+<h2 id="sec7">7.  DNS handoff procedure</h2>
+<p>When the script finishes successfully, two DNS records are produced. The DNS owner publishes them in this order:</p>
+
+<table>
+<thead><tr><th style="width:10%">Step</th><th style="width:10%">Type</th><th style="width:24%">Host</th><th style="width:36%">Value</th><th style="width:8%">TTL</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><span class="badge badge-green">TXT</span></td><td><code>_dnsauth.www</code></td><td><i>(provided by script - validation token)</i></td><td>300</td><td>Publish first. Validates the AFD Standard managed cert.</td></tr>
+<tr><td>2</td><td><span class="badge badge-grey">Wait</span></td><td colspan="3" style="text-align:center;background:#F5F7FA;font-style:italic">Wait until cert state shows <code>Approved</code> (5-30 min)</td><td>-</td></tr>
+<tr><td>3</td><td><span class="badge badge-blue">CNAME</span></td><td><code>www</code></td><td><i>(provided by script - new endpoint hostname, e.g. <code>pyx-fx-www-hipyx-com-ep-XXXX.z02.azurefd.net</code>)</i></td><td>300</td><td>Publish AFTER cert state is Approved. This is the cutover.</td></tr>
+</tbody></table>
+
+<p>The DNS owner watches the cert state with this command (or the executor does and signals to the DNS owner):</p>
+<pre><code>az afd custom-domain show -g production --profile-name hipyx-std --custom-domain-name www-hipyx-com --query domainValidationState -o tsv</code></pre>
+<p>States cycle: <code>Pending</code> -> <code>Submitting</code> -> <code>Approved</code>.</p>
+
+<h2 id="sec8">8.  Verification commands</h2>
+<p>After the CNAME is published and propagated (1-2 min on TTL=300):</p>
+<pre><code>nslookup www.hipyx.com
+curl.exe -I https://www.hipyx.com/</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>nslookup</code> resolves <code>www.hipyx.com</code> through <code>*.z02.azurefd.net</code> (Standard) - no longer through <code>hipyx.azurefd.net</code> (Classic).</li>
+<li><code>curl -I</code> returns HTTP 200 (or appropriate app response) with the response header <code>x-azure-ref</code>.</li>
+<li>Application smoke test on <code>www.hipyx.com</code> matches pre-cutover behavior (login, key user flows).</li>
+</ul>
+
+<p>Continuous polling (auto-detects when stable):</p>
+<pre><code>.\verify-www-hipyx.ps1</code></pre>
+<p>Polls HTTP every 20 sec, declares green after 3 consecutive 2xx/3xx responses. Times out at 30 min and recommends Microsoft support escalation if still red.</p>
+
+<h2 id="sec9">9.  Rollback plan and commands</h2>
+<p>Rollback is DNS-level, validated during Phase 1 dry-run, and takes under 5 minutes including DNS propagation. Two scenarios:</p>
+
+<h3>9.1  Rollback during the cutover (script auto-rollback)</h3>
+<p>If <code>hipyx-cutover-tonight.ps1</code> exhausts all 8 Standard create attempts, it automatically falls into Phase B and:</p>
+<ol>
+<li>Recreates the Classic frontend-endpoint <code>www-hipyx-com</code>.</li>
+<li>Re-attaches it to both Classic routing rules.</li>
+<li>Re-enables HTTPS managed cert on Classic.</li>
+<li><code>www.hipyx.com</code> resumes on Classic AFD within 1-2 min. DNS does not change in this scenario.</li>
+</ol>
+
+<h3>9.2  Manual rollback after the CNAME flip</h3>
+<p>If verification fails after the DNS owner has already flipped the CNAME, the DNS owner repoints the CNAME back:</p>
+<pre><code>www  CNAME  hipyx.azurefd.net  TTL 300</code></pre>
+<p>Within the 300-second TTL, traffic returns to Classic AFD. The Standard configuration is left in place for the retry; only DNS has changed.</p>
+
+<h3>9.3  Standalone rollback script</h3>
+<p>For manual invocation outside the cutover script:</p>
+<pre><code>.\hipyx-cutover-tonight.ps1 -ForceRollback -NoConfirm</code></pre>
+<p>or the dedicated script:</p>
+<pre><code>.\rollback-www-hipyx.ps1</code></pre>
+<p>Either restores the Classic frontend-endpoint and routing rule references. Idempotent - safe to re-run.</p>
+
+<h2 id="sec10">10.  Risk assessment</h2>
+<table>
+<thead><tr><th style="width:30%">Risk</th><th style="width:14%">Likelihood</th><th style="width:14%">Impact</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>Azure-side hostname-release lag during the cutover</td><td>Medium</td><td>Low - delays cutover, no data impact</td><td>Script retries for 40 min before triggering rollback. Maintenance window sized to absorb this.</td></tr>
+<tr><td>Managed-cert reissue takes longer than expected on Standard</td><td>Low</td><td>Low - HTTPS warnings until cert lands; HTTP works</td><td>Cert is verified <code>Approved</code> before the DNS owner publishes the CNAME.</td></tr>
+<tr><td>DNS propagation lag</td><td>Low</td><td>Low - TTL=300 capped</td><td>Rollback flips DNS back in under 5 min.</td></tr>
+<tr><td>Application backend regression after cutover</td><td>Very low</td><td>Medium</td><td>No application change. Same App Service. Origin host header preserved.</td></tr>
+<tr><td>Failure during cutover requiring rollback</td><td>Low</td><td>Medium - extended outage</td><td>Auto-rollback in script. Standalone rollback script tested. DNS owner on standby.</td></tr>
+<tr><td>DNS owner unavailable mid-cutover</td><td>Low</td><td>High - blocks completion</td><td>Primary + alternate DNS owner identified. Window scheduled when both confirm availability.</td></tr>
+<tr><td>Microsoft support engagement needed</td><td>Very low</td><td>Low - extends recovery</td><td>Severity B ticket template prepared; can be opened immediately on script timeout.</td></tr>
+</tbody></table>
+
+<h2 id="sec11">11.  Success criteria</h2>
+<ul>
+<li><code>az afd custom-domain show ... --query domainValidationState</code> returns <code>Approved</code></li>
+<li><code>nslookup www.hipyx.com</code> resolves through <code>*.z02.azurefd.net</code></li>
+<li><code>curl.exe -I https://www.hipyx.com/</code> returns 2xx with the <code>x-azure-ref</code> header</li>
+<li>App functionality smoke test on <code>www.hipyx.com</code> matches pre-cutover behavior</li>
+<li>WAF security-policy is bound to the new custom-domain on <code>hipyx-std</code></li>
+<li>Phase 1 domain (<code>survey.farmboxrx.com</code>) remains unaffected throughout</li>
+<li>No customer-reported impact in #incidents within 1 hour post-cutover</li>
+</ul>
+
+<h2 id="sec12">12.  Post-cutover and decommission</h2>
+<ul>
+<li><b>Immediately:</b> #ops update with timing summary and link to verification output.</li>
+<li><b>Within 24 hours:</b> short post-cutover summary circulated to PYX Engineering.</li>
+<li><b>Day +1:</b> traffic monitoring confirms parity with pre-cutover baseline.</li>
+<li><b>Day +14:</b> Classic <code>hipyx</code> profile decommissioned. Until then it remains online as a rollback safety net (no traffic, no cost impact).</li>
+<li><b>Day +14:</b> WAF policy <code>wafPyxPwaProd</code> (Classic) reviewed and either deleted or retained for archival.</li>
+</ul>
+
+<h2 id="sec13">13.  Approval</h2>
+<div class="box box-green">
+<b>Approval requested for:</b><br>
+- Maintenance window <b>2026-04-28 22:00 - 23:00</b> for the Phase 2 cutover of <code>www.hipyx.com</code> from AFD Classic <code>hipyx</code> to AFD Standard <code>hipyx-std</code>, per the procedure documented above.<br>
+- DNS owner (Skye, with alternate on standby) coordinated for the same window.<br>
+- Authorization to invoke <code>hipyx-cutover-tonight.ps1</code> at 22:00 with the documented defaults.<br>
+- Authorization to auto-rollback per <a href="#sec9">section 9</a> if the forward path cannot complete within the 40-min budget.<br><br>
+On approval, this CR moves to executed state during the agreed window. Post-cutover summary follows within 24 hours.
+</div>
+
+<table style="margin-top:14px">
+<tr><td class="label">Approver name</td><td>Tony Schlak - PYX Engineering Leadership</td></tr>
+<tr><td class="label">Approval (sign / acknowledge)</td><td>____________________________________</td></tr>
+<tr><td class="label">Date / time</td><td>____________________________________</td></tr>
+<tr><td class="label">Notes / conditions</td><td>____________________________________</td></tr>
+</table>
+
+<div class="foot">
+Prepared by Syed Rizvi - PYX Health Production - 2026-04-28
+</div>
+
+</body>
+</html>
