@@ -5,7 +5,7 @@ param(
     [string]$ClassicProfile   = "hipyx",
     [string]$StandardProfile  = "hipyx-std",
     [string]$WafPolicyName    = "hipyxWafPolicy",
-    [string]$DefaultOriginHost = "",
+    [string]$DefaultOriginHost = "appsvc-pwa-prod.azurewebsites.net",
     [int]   $ReleaseWaitSec   = 60,
     [int]   $CreateRetryWaitSec = 60,
     [int]   $CreateMaxAttempts = 4,
@@ -245,29 +245,62 @@ foreach ($p in $plan) {
     $classicFEId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Network/frontDoors/$ClassicProfile/frontendEndpoints/$($p.ClassicEndpointName)"
     $rulesUsingFE = @()
     $originHost = $DefaultOriginHost
+
+    # Pass A: walk routing rules with case-insensitive ID match
     foreach ($r in $classicRules) {
         $refIds = @($r.frontendEndpoints | ForEach-Object { $_.id })
-        if ($refIds -contains $classicFEId) {
+        $hasFE = $false
+        foreach ($rid in $refIds) { if ($rid -and ($rid.ToLower() -eq $classicFEId.ToLower())) { $hasFE = $true; break } }
+        if ($hasFE) {
             $rulesUsingFE += $r
             try {
                 $rcType = $r.routeConfiguration.'@odata.type'
                 if ($rcType -match 'ForwardingConfiguration' -and $r.routeConfiguration.backendPool) {
                     $bpName = ($r.routeConfiguration.backendPool.id -split '/')[-1]
                     $bp = _AzShow { az network front-door backend-pool show --resource-group $ResourceGroup --front-door-name $ClassicProfile --name $bpName -o json }
-                    if ($bp -and $bp.backends -and $bp.backends.Count -gt 0) {
+                    if ($bp -and $bp.backends -and $bp.backends.Count -gt 0 -and -not $originHost) {
                         $originHost = $bp.backends[0].address
-                        Log ("  Classic backend pool: {0} -> origin host: {1}" -f $bpName, $originHost)
+                        Log ("  Classic backend pool (rule match): {0} -> origin host: {1}" -f $bpName, $originHost)
                     }
                 } elseif ($rcType -match 'RedirectConfiguration') {
-                    Log ("  Classic rule '{0}' is a redirect, not a forward - origin will use DefaultOriginHost or fail" -f $r.name) "WARN"
+                    Log ("  Classic rule '{0}' is a redirect, not a forward - skipping for backend lookup" -f $r.name) "WARN"
                 }
             } catch { Log ("  Could not parse routeConfiguration on rule '{0}': {1}" -f $r.name, $_) "WARN" }
+        }
+    }
+
+    # Pass B: scan ALL Classic backend pools, match pool name to safe-name, else use only one
+    if (-not $originHost) {
+        Log "  Routing-rule walk did not yield a backend - scanning all Classic backend pools..." "WARN"
+        $allPools = _AzList { az network front-door backend-pool list --resource-group $ResourceGroup --front-door-name $ClassicProfile -o json }
+        $candidates = @()
+        foreach ($pool in $allPools) {
+            if ($pool.backends -and $pool.backends.Count -gt 0) {
+                $addr = $pool.backends[0].address
+                if ($addr) {
+                    $candidates += [PSCustomObject]@{ Name = $pool.name; Backend = $addr }
+                    Log ("    Backend pool: {0,-30} -> {1}" -f $pool.name, $addr)
+                }
+            }
+        }
+        if ($candidates.Count -gt 0) {
+            # Try name-pattern match (pool name contains safe-name fragment, or vice versa)
+            $matched = $candidates | Where-Object { $_.Name -match [regex]::Escape($p.SafeName) -or $p.SafeName -match [regex]::Escape($_.Name) -or $_.Name -match 'www|web|app|main|default' } | Select-Object -First 1
+            if ($matched) {
+                $originHost = $matched.Backend
+                Log ("  Auto-matched pool: {0} -> {1}" -f $matched.Name, $originHost) "OK"
+            } elseif ($candidates.Count -eq 1) {
+                $originHost = $candidates[0].Backend
+                Log ("  Only one backend pool exists - using {0}" -f $originHost) "OK"
+            }
         }
     }
 
     if (-not $originHost) {
         Log "Could not detect Classic backend for $($p.Hostname) and no -DefaultOriginHost was provided" "ERR"
         Log "Re-run with: -DefaultOriginHost <fqdn-of-real-backend>" "ERR"
+        Log "To list candidates manually:" "ERR"
+        Log "  az network front-door backend-pool list -g $ResourceGroup --front-door-name $ClassicProfile --query `"[].{name:name,backends:backends[].address}`" -o table" "ERR"
         $failed++
         continue
     }
