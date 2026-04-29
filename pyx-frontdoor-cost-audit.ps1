@@ -2,7 +2,7 @@
 param(
     [string]$SubscriptionId  = "e42e94b5-c6f8-4af0-a41b-16fda520de6e",
     [string]$ResourceGroup   = "production",
-    [int]   $LookbackDays    = 30,
+    [int]   $LookbackDays    = 90,
     [string[]]$MigrationScope = @("hipyx","pyxiq","pyxiq-stage","pypwa-stage"),
     [string]$ReportDir       = (Join-Path $env:USERPROFILE "Desktop\pyx-frontdoor-cost-audit")
 )
@@ -357,6 +357,15 @@ code{font-family:Consolas,monospace;font-size:11.5px;background:#F5F7FA;padding:
 .rec-active{background:#1B6B3A}
 .savings-callout{background:#FBEAEA;border-left:3px solid #9B2226;padding:12px 16px;margin:14px 0;font-size:14px}
 .savings-callout b{color:#9B2226;font-size:18px}
+.act{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:600;color:#fff}
+.act-delete-prem{background:#7C0000}
+.act-delete{background:#9B2226}
+.act-verify{background:#A06A00}
+.act-migrate{background:#1F3D7A}
+.act-keep{background:#1B6B3A}
+.action-header td{background:#F5F7FA;color:#1F3D7A;font-size:13px;padding:10px}
+tr.act-delete-prem td{background:#FFF3F3}
+tr.act-delete td{background:#FFF8F8}
 </style></head><body>
 
 <h1>Front Door cost-impact audit + cross-validation</h1>
@@ -405,12 +414,12 @@ Net effect: roughly zero cost difference. Slight reduction is possible since Mic
 </div>
 
 <div class="savings-callout">
-<b>Current Front Door spend (projected annual, all profiles):</b> <code>\$$('{0:N0}' -f $totalAnnualAll)/year</code><br>
-&nbsp;&nbsp;Base fees: <code>\$$('{0:N0}' -f $totalBaseAnnual)/yr</code> &nbsp;|&nbsp; Bandwidth: <code>\$$('{0:N0}' -f $totalBwAnnual)/yr</code> &nbsp;|&nbsp; Per-request (Standard tier 1 over 10M/mo): <code>\$$('{0:N0}' -f $totalReqAnnual)/yr</code><br><br>
+<b>Current Front Door spend (projected annual, all profiles):</b> <code>`$$('{0:N0}' -f $totalAnnualAll)/year</code><br>
+&nbsp;&nbsp;Base fees: <code>`$$('{0:N0}' -f $totalBaseAnnual)/yr</code> &nbsp;|&nbsp; Bandwidth: <code>`$$('{0:N0}' -f $totalBwAnnual)/yr</code> &nbsp;|&nbsp; Per-request (Standard tier 1 over 10M/mo): <code>`$$('{0:N0}' -f $totalReqAnnual)/yr</code><br><br>
 <b>Decommission opportunities identified:</b> $($decomCandidates.Count) zero-traffic profile(s), $($lowUsage.Count) low-usage profile(s).<br>
-Potential annual savings if all zero-traffic profiles are decommissioned: <b>\$$('{0:N0}' -f $decomFullSavingsAnnual)/year</b> (full cost: base + bandwidth + requests).<br>
-Additional potential if all low-usage profiles are consolidated: <b>\$$('{0:N0}' -f $lowFullSavingsAnnual)/year</b>.<br>
-Combined upper bound: <b>\$$('{0:N0}' -f ($decomFullSavingsAnnual + $lowFullSavingsAnnual))/year</b>.<br>
+Potential annual savings if all zero-traffic profiles are decommissioned: <b>`$$('{0:N0}' -f $decomFullSavingsAnnual)/year</b> (full cost: base + bandwidth + requests).<br>
+Additional potential if all low-usage profiles are consolidated: <b>`$$('{0:N0}' -f $lowFullSavingsAnnual)/year</b>.<br>
+Combined upper bound: <b>`$$('{0:N0}' -f ($decomFullSavingsAnnual + $lowFullSavingsAnnual))/year</b>.<br>
 Details in Sections 3 and 4. These are <i>candidates</i> - each one needs an owner-confirmation before delete.
 </div>
 
@@ -446,9 +455,9 @@ foreach ($a in $actionOrder) {
         "DELETE-PREMIUM-WASTE" { "DELETE  (Premium @ \$0)" }
         default { $a }
     }
-    $html += "<tr class='action-header'><td colspan='6'><b>$actionLabel</b> &mdash; $($grouped[$a].Count) profile(s) &mdash; <b>\$$('{0:N0}' -f $actionTotal)/yr</b></td></tr>`n"
+    $html += "<tr class='action-header'><td colspan='6'><b>$actionLabel</b> &mdash; $($grouped[$a].Count) profile(s) &mdash; <b>`$$('{0:N0}' -f $actionTotal)/yr</b></td></tr>`n"
     foreach ($r in ($grouped[$a] | Sort-Object Requests30d -Descending)) {
-        $html += "<tr class='$rowClass'><td><span class='act $rowClass'>$($r.Action)</span></td><td>$($r.Priority)</td><td><b>$($r.Name)</b><br/><span class='dim'>$([System.Web.HttpUtility]::HtmlEncode($r.CustomDomains))</span></td><td><code>$($r.Sku)</code></td><td style='text-align:right'>$('{0:N0}' -f $r.Requests30d)</td><td style='text-align:right'><b>\$$('{0:N0}' -f $r.TotalAnnualCost)</b></td></tr>`n"
+        $html += "<tr class='$rowClass'><td><span class='act $rowClass'>$($r.Action)</span></td><td>$($r.Priority)</td><td><b>$($r.Name)</b><br/><span class='dim'>$([System.Web.HttpUtility]::HtmlEncode($r.CustomDomains))</span></td><td><code>$($r.Sku)</code></td><td style='text-align:right'>$('{0:N0}' -f $r.Requests30d)</td><td style='text-align:right'><b>`$$('{0:N0}' -f $r.TotalAnnualCost)</b></td></tr>`n"
     }
 }
 
@@ -470,7 +479,7 @@ $rowsAll
 <tbody>
 $decomRows
 </tbody></table>
-<p><b>Total potential annual savings (zero-traffic):</b> <code>\$$('{0:N0}' -f $decomFullSavingsAnnual)/year</code> across $($decomCandidates.Count) profile(s).</p>
+<p><b>Total potential annual savings (zero-traffic):</b> <code>`$$('{0:N0}' -f $decomFullSavingsAnnual)/year</code> across $($decomCandidates.Count) profile(s).</p>
 
 <h2>4.  Low-usage profiles  -  &lt;1,000 requests in $($LookbackDays) days</h2>
 <p>These profiles are technically alive but barely used. They may be sandbox / test / legacy environments that can be merged into a sandbox profile or simply retired. Owner-review recommended before any action.</p>
@@ -479,7 +488,7 @@ $decomRows
 <tbody>
 $lowRows
 </tbody></table>
-<p><b>Additional potential annual savings (low-usage, if all consolidated):</b> <code>\$$('{0:N0}' -f $lowFullSavingsAnnual)/year</code> across $($lowUsage.Count) profile(s).</p>
+<p><b>Additional potential annual savings (low-usage, if all consolidated):</b> <code>`$$('{0:N0}' -f $lowFullSavingsAnnual)/year</code> across $($lowUsage.Count) profile(s).</p>
 
 <h2>5.  Migration scope (this CR)</h2>
 <table>
