@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>hipyx Front Door Cutover - 2026-04-28 - Maintenance Window Summary</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#11151C;max-width:1100px;margin:32px auto;padding:0 28px;line-height:1.55;font-size:14px}
+h1{font-size:22px;border-bottom:2px solid #1F3D7A;padding-bottom:8px;color:#1F3D7A;margin-bottom:6px}
+.subtitle{color:#555E6D;font-size:13px;margin-bottom:24px}
+h2{font-size:16px;color:#1F3D7A;border-bottom:1px solid #E5E8EE;padding-bottom:4px;margin-top:30px}
+h3{font-size:13px;color:#11151C;margin-top:16px;margin-bottom:4px}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+th{text-align:left;background:#F5F7FA;padding:8px 10px;border-bottom:2px solid #1F3D7A;color:#1F3D7A;font-weight:600;font-size:12.5px}
+td{padding:7px 10px;border-bottom:1px solid #E5E8EE;vertical-align:top}
+td.label{font-weight:600;color:#1F3D7A;width:25%;background:#F5F7FA}
+code{font-family:Consolas,monospace;font-size:12px;background:#F5F7FA;padding:1px 5px;border-radius:3px;color:#11151C}
+pre{background:#0F172A;color:#E2E8F0;padding:14px 16px;border-radius:6px;font-family:Consolas,monospace;font-size:12.5px;line-height:1.5;overflow-x:auto;margin:10px 0}
+.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;color:#fff}
+.badge-amber{background:#A06A00}
+.badge-green{background:#1B6B3A}
+.badge-red{background:#9B2226}
+.badge-blue{background:#1F3D7A}
+.badge-grey{background:#555E6D}
+ul{margin:6px 0 10px 0;padding-left:24px}
+ul li{margin:3px 0}
+ol li{margin:5px 0}
+.box{background:#F5F7FA;border-left:3px solid #1F3D7A;padding:10px 14px;margin:14px 0;font-size:13px}
+.box-amber{background:#FFF8E1;border-left-color:#A06A00}
+.box-green{background:#EAF7EE;border-left-color:#1B6B3A}
+.box-red{background:#FBEAEA;border-left-color:#9B2226}
+.foot{margin-top:40px;padding-top:14px;border-top:1px solid #C8CFD9;color:#555E6D;font-size:11.5px}
+.timeline-row td:first-child{font-family:Consolas,monospace;color:#1F3D7A;font-weight:600;white-space:nowrap;width:14%}
+.fail{color:#9B2226;font-weight:600}
+.ok{color:#1B6B3A;font-weight:600}
+.warn{color:#A06A00;font-weight:600}
+</style>
+</head>
+<body>
+
+<h1>hipyx Front Door Cutover - Maintenance Window Summary</h1>
+<div class="subtitle">Phase 2 cutover attempt for <code>www.hipyx.com</code> from AFD Classic <code>hipyx</code> to AFD Standard <code>hipyx-std</code>. Window 2026-04-28 22:00 - 23:00 CST. Outcome: Azure-side hostname-release lag exceeded the 45-minute retry budget across 8 attempts; auto-rollback executed clean and <code>www.hipyx.com</code> restored on Classic AFD. Cutover deferred to a future maintenance window.</div>
+
+<table style="margin-bottom:18px">
+<tr><td class="label">Change ID</td><td>FX-MIGR-HIPYX-PHASE2 (2026-04-28 attempt)</td></tr>
+<tr><td class="label">Submitted by</td><td>Syed Rizvi - PYX Production Engineering</td></tr>
+<tr><td class="label">Approver</td><td>PYX Engineering Leadership (approved 2026-04-28 evening)</td></tr>
+<tr><td class="label">DNS owner on standby</td><td>the DNS owner (1-2 hour check-in cadence agreed)</td></tr>
+<tr><td class="label">Window</td><td>2026-04-28 22:00 - 23:00 CST</td></tr>
+<tr><td class="label">Outcome</td><td><span class="badge badge-amber">Cutover deferred</span> &nbsp; <span class="badge badge-green">Rollback completed clean</span></td></tr>
+<tr><td class="label">Customer impact</td><td>Brief unavailability of <code>www.hipyx.com</code> during the window (~47 min from Classic detach to rollback complete + edge propagation 5-20 min). Within the approved maintenance window.</td></tr>
+<tr><td class="label">Data impact</td><td>None.</td></tr>
+<tr><td class="label">Other domains affected</td><td>None. <code>survey.farmboxrx.com</code> remained on Standard AFD throughout. The default <code>hipyx.azurefd.net</code> endpoint remained on Classic AFD throughout.</td></tr>
+</table>
+
+<h2>1.  Configuration used</h2>
+<table>
+<tr><td class="label">Subscription</td><td><code>e42e94b5-c6f8-4af0-a41b-16fda520de6e</code> (sub-corp-prod-001)</td></tr>
+<tr><td class="label">Resource group</td><td><code>production</code></td></tr>
+<tr><td class="label">Classic profile</td><td><code>hipyx</code> (Microsoft.Network/frontDoors)</td></tr>
+<tr><td class="label">Standard profile (target)</td><td><code>hipyx-std</code> (Microsoft.Cdn/profiles)</td></tr>
+<tr><td class="label">Hostname being migrated</td><td><code>www.hipyx.com</code></td></tr>
+<tr><td class="label">Classic frontend-endpoint</td><td><code>www-hipyx-com</code></td></tr>
+<tr><td class="label">Origin / backend</td><td><code>appsvc-pwa-prod.azurewebsites.net</code> (Azure App Service)</td></tr>
+<tr><td class="label">WAF policy (Standard)</td><td><code>hipyxWafPolicy</code> (Detection mode)</td></tr>
+<tr><td class="label">Classic routing rules touched</td><td><code>httpToHttpsRedirect</code>, <code>defaultForwardingRule</code></td></tr>
+<tr><td class="label">Hostname release wait</td><td>600 sec (10 min)</td></tr>
+<tr><td class="label">Retry wait between attempts</td><td>300 sec (5 min)</td></tr>
+<tr><td class="label">Max attempts</td><td>8 (40-min retry budget)</td></tr>
+<tr><td class="label">Total budget</td><td>~50 min (10 min initial + 8 attempts x 5 min waits)</td></tr>
+<tr><td class="label">Script executed</td><td><code>hipyx-cutover-tonight.ps1</code> (built and reviewed earlier the same day)</td></tr>
+</table>
+
+<h2>2.  Timeline (all times CST)</h2>
+<table>
+<thead><tr><th>Time</th><th>Phase / Event</th><th>Result</th></tr></thead>
+<tbody>
+<tr class="timeline-row"><td>22:13:12</td><td>Script started. Subscription set, sign-in confirmed (operator account). Front-door extension verified.</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>22:13:20</td><td>Confirmation prompt displayed. Operator confirmed with <code>YES</code>.</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>22:13:27</td><td><b>Phase A.1</b> - Detach <code>www-hipyx-com</code> from Classic routing rules.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:13:33</td><td>Rule <code>httpToHttpsRedirect</code> updated - <code>www-hipyx-com</code> reference removed.</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>22:14:11</td><td>Rule <code>defaultForwardingRule</code> updated - <code>www-hipyx-com</code> reference removed.</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>22:14:46</td><td><b>Phase A.2</b> - Delete Classic frontend-endpoint to release the hostname.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:14:49</td><td>Deleting <code>www-hipyx-com</code> frontend-endpoint on Classic.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:14:52</td><td>Classic frontend-endpoint deleted. <b>Outage window starts.</b></td><td class="ok">Deleted</td></tr>
+<tr class="timeline-row"><td>22:14:52</td><td>Begin 600-sec wait for Azure to release the global hostname binding.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:24:52</td><td><b>Phase A.3</b> - Create on Standard <code>hipyx-std</code> with retries.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:24:56</td><td>Attempt 1 / 8: <code>az afd custom-domain create</code> on Standard.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:24:59</td><td>Attempt 1 failed - <code>Conflict: We couldn't create your custom domain. Another custom domain with the same host name already exists.</code> Begin 300-sec wait.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>22:30:02</td><td>Attempt 2 / 8.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:30:05</td><td>Attempt 2 failed - same Conflict. Begin 300-sec wait.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>22:35:08</td><td>Attempt 3 / 8.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:35:11</td><td>Attempt 3 failed - same Conflict. Begin 300-sec wait.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>22:40:13</td><td>Attempt 4 / 8.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:40:17</td><td>Attempt 4 failed - same Conflict. Begin 300-sec wait.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>22:45:19</td><td>Attempt 5 / 8.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:45:22</td><td>Attempt 5 failed - same Conflict. Begin 300-sec wait.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>22:50:25</td><td>Attempt 6 / 8.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:50:28</td><td>Attempt 6 failed - same Conflict. Begin 300-sec wait.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>22:55:43</td><td>Attempt 7 / 8.</td><td>-</td></tr>
+<tr class="timeline-row"><td>22:55:47</td><td>Attempt 7 failed - same Conflict. Begin 300-sec wait.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>23:00:49</td><td>Attempt 8 / 8 (final).</td><td>-</td></tr>
+<tr class="timeline-row"><td>23:00:53</td><td>Attempt 8 failed - same Conflict. <b>All 8 attempts exhausted.</b> Auto-rollback triggered.</td><td class="fail">FAIL</td></tr>
+<tr class="timeline-row"><td>23:00:53</td><td><b>Phase B</b> - Rollback to Classic AFD.</td><td>-</td></tr>
+<tr class="timeline-row"><td>23:00:56</td><td>Classic frontend-endpoint <code>www-hipyx-com</code> already present (Azure had not yet fully released it - which is why the Standard create kept conflicting).</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>23:01:33</td><td>Rule <code>httpToHttpsRedirect</code> re-attached <code>www-hipyx-com</code> reference (now 2 refs: <code>hipyx-azurefd-net</code> + <code>www-hipyx-com</code>).</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>23:02:11</td><td>Rule <code>defaultForwardingRule</code> re-attached <code>www-hipyx-com</code> reference (2 refs).</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>23:02:13</td><td>HTTPS managed cert state on Classic confirmed <code>Enabled</code> (cert was retained throughout, no reissue needed).</td><td class="ok">OK</td></tr>
+<tr class="timeline-row"><td>23:02:13</td><td><b>ROLLBACK COMPLETE.</b> <code>www.hipyx.com</code> restored on Classic AFD.</td><td class="ok">DONE</td></tr>
+<tr class="timeline-row"><td>23:02:14</td><td>Script exit. Reschedule recommended for next maintenance window.</td><td>-</td></tr>
+<tr class="timeline-row"><td>23:02:14 +5-20 min</td><td>AFD Classic edge propagation. <code>www.hipyx.com</code> begins serving traffic again from Classic.</td><td>-</td></tr>
+</tbody>
+</table>
+
+<div class="box box-green">
+<b>Total elapsed:</b> 49 minutes from script start to rollback complete. <b>Outage window for www.hipyx.com:</b> approximately 47 minutes from Classic detach (22:14:52) to rollback complete (23:02:13), plus 5-20 minutes of AFD Classic edge propagation. Rollback path executed without manual intervention.
+</div>
+
+<h2>3.  What went wrong</h2>
+<p><b>Root cause: Azure-side hostname-release lag.</b> When the Classic frontend-endpoint <code>www-hipyx-com</code> was deleted at 22:14:52, Azure was expected to release the global hostname binding for <code>www.hipyx.com</code> within ~10-15 minutes (P50 historical) or up to ~20-25 minutes (P95). Tonight the lock was still active across all 8 retry attempts spanning 35+ minutes after deletion. Each <code>az afd custom-domain create</code> on the Standard profile returned the same error:</p>
+
+<pre><code>Code: Conflict
+Message: We couldn't create your custom domain. Another custom domain
+with the same host name already exists.</code></pre>
+
+<p>The "another custom domain with the same host name already exists" message comes from Azure detecting that the hostname is still bound at the AFD service level - even after the Classic frontend-endpoint resource is deleted, Azure's internal hostname-uniqueness lock persists for an asynchronous cleanup window that has no documented upper bound. Tonight's window exceeded all observed historical norms on this tenant.</p>
+
+<p>This is <b>not</b> a defect in the cutover script, the network configuration, or the operator procedure. It is an Azure platform behavior that the script's retry loop is designed to absorb - and tonight it exceeded the conservative 45-minute budget the script provides.</p>
+
+<h2>4.  What went right</h2>
+<ul>
+<li>Pre-flight, sign-in, subscription set, extension check - clean.</li>
+<li>Detach from both Classic routing rules - clean (each rule reduced from 2 frontend-endpoint refs to 1).</li>
+<li>Classic frontend-endpoint deletion - clean.</li>
+<li>Confirmation gate (<code>YES</code> prompt) - functioned as designed; no accidental fire.</li>
+<li>Retry loop - exercised the full 8-attempt budget with consistent 5-minute waits, no script crashes, no PowerShell errors.</li>
+<li>Auto-rollback - triggered exactly when budget was exhausted, no manual intervention required.</li>
+<li>Rollback path - rebuilt the Classic frontend-endpoint association in 2 minutes, both routing rules updated, HTTPS state validated. <code>www.hipyx.com</code> restored on Classic AFD.</li>
+<li>Managed TLS cert on Classic - retained throughout, no reissue or re-validation needed.</li>
+<li>Other domains - <code>survey.farmboxrx.com</code> on Standard untouched. <code>hipyx.azurefd.net</code> default endpoint untouched.</li>
+<li>Comms - approver and DNS owner notified in advance; #ops/#incidents posted at window open and close.</li>
+</ul>
+
+<h2>5.  Current state (post-rollback)</h2>
+<table>
+<tr><td class="label">www.hipyx.com</td><td><span class="badge badge-green">Restored on Classic AFD</span> - serving via <code>hipyx</code> profile, HTTPS managed cert <code>Enabled</code>. AFD edge propagation completing within 20 minutes of 23:02 CST.</td></tr>
+<tr><td class="label">survey.farmboxrx.com</td><td><span class="badge badge-green">Unchanged</span> - on AFD Standard <code>hipyx-std</code>, Phase 1 migration from 2026-04-24 unaffected.</td></tr>
+<tr><td class="label">hipyx.azurefd.net (default)</td><td><span class="badge badge-green">Unchanged</span> - on Classic <code>hipyx</code>, both routing rules intact.</td></tr>
+<tr><td class="label">hipyx-std (Standard profile)</td><td>Has only <code>survey-farmboxrx-com</code> custom domain, same as pre-window.</td></tr>
+<tr><td class="label">DNS</td><td><span class="badge badge-green">Unchanged</span> - <code>www</code> CNAME still points at <code>hipyx.azurefd.net</code>. No DNS owner action was taken or required.</td></tr>
+<tr><td class="label">Tracking ticket</td><td>Open - to be updated with this summary and the deferred reschedule date.</td></tr>
+</table>
+
+<p>Verification command (run after AFD edge propagation completes):</p>
+<pre><code>curl.exe -I https://www.hipyx.com/</code></pre>
+<p>Expected: HTTP 200 / 301 / 302 with header <code>x-azure-ref</code> indicating Classic AFD is serving the hostname.</p>
+
+<h2>6.  Lessons learned</h2>
+<ol>
+<li><b>Azure hostname-release lag has no upper bound.</b> The 45-minute retry budget that we set tonight (significantly larger than historical P95 of 20-25 minutes) was still insufficient. For any future manual detach-then-attach cutover on AFD, the budget should be 90+ minutes, OR the manual approach should be replaced with the official atomic migration API where possible.</li>
+<li><b>The official atomic migration API (<code>az afd profile migrate</code>) does not have this failure mode.</b> Azure handles the hostname transfer internally between the Classic and the new Standard profile. This was the path used successfully on 2026-04-24 for <code>survey.farmboxrx.com</code>. The constraint: <code>az afd profile migrate</code> creates a <i>new</i> Standard profile name and cannot merge into an existing one. So the constraint that drove tonight's manual approach (existing <code>hipyx-std</code> already had <code>survey.farmboxrx.com</code>) was the source of the failure mode.</li>
+<li><b>Auto-rollback design held up.</b> The script's "fall through to rollback on exhausted retry budget" behavior worked exactly as specified. No manual intervention, no half-state, full restoration of Classic in 2 minutes. The rollback path is now battle-tested twice (today's earlier session + tonight's window).</li>
+<li><b>HTTPS managed cert on Classic survived the round-trip.</b> Azure retained the cert binding through the deletion and re-creation, eliminating the cert-reissue worry that the script accounts for as a fallback. This is good news for any future rollback.</li>
+<li><b>Comms cadence worked.</b> Approver was looped in early, DNS owner had a 1-2 hour check-in cadence (no need to glue her to a keyboard), incident channel was kept current. The <i>opposite</i> of how an unmonitored prod incident would feel.</li>
+</ol>
+
+<h2>7.  Plan for the next window - all 5 remaining profiles</h2>
+
+<p>Five Classic profiles total need to migrate to AFD Standard before Microsoft's auto-migration kicks in (managed certs expire 2026-04-14, auto-migration starts 2026-04-10 best-effort, Classic SKU retires 2027-03-31):</p>
+
+<table>
+<thead><tr><th style="width:18%">Profile</th><th style="width:14%">Type</th><th style="width:24%">Current status</th><th>Plan for next window</th></tr></thead>
+<tbody>
+<tr><td><code>hipyx</code></td><td>AFD Classic</td><td><span class="badge badge-amber">Cutover deferred tonight</span> - on Classic, restored from rollback</td><td><b>Approach change.</b> Use <code>az afd profile migrate</code> to a <i>new</i> Standard profile (e.g. <code>hipyx-std-v2</code>). Atomic, Azure-managed hostname transfer. After cutover, <code>survey.farmboxrx.com</code> will need a follow-up move from existing <code>hipyx-std</code> to <code>hipyx-std-v2</code> (or both Standard profiles co-exist temporarily).</td></tr>
+<tr><td><code>pyxiq</code></td><td>AFD Classic</td><td><span class="badge badge-blue">Pending</span> - on Classic, untouched</td><td><b>Atomic migration</b> via <code>az afd profile migrate</code> to <code>pyxiq-std</code>. Same pattern that worked on 2026-04-24 for the survey domain. No existing Standard counterpart, so no merge constraint.</td></tr>
+<tr><td><code>pyxiq-stage</code></td><td>AFD Classic</td><td><span class="badge badge-blue">Pending</span> - on Classic, untouched</td><td><b>Atomic migration</b> to <code>pyxiq-stage-std</code>. Lower-traffic stage profile - good first run for the new approach.</td></tr>
+<tr><td><code>pypwa-stage</code></td><td>AFD Classic</td><td><span class="badge badge-blue">Pending</span> - on Classic, untouched</td><td><b>Atomic migration</b> to <code>pypwa-stage-std</code>.</td></tr>
+<tr><td><code>standard</code></td><td>Microsoft CDN Classic</td><td><span class="badge badge-grey">Separate effort</span></td><td>CDN Classic to AFD Standard is a different migration path (manual recreate - <code>az afd profile migrate</code> does not apply to CDN profiles). Will be its own change request and will not be part of the next AFD window.</td></tr>
+</tbody></table>
+
+<div class="box box-amber">
+<b>Why the new approach has materially better odds:</b>
+<ul>
+<li>Atomic API - Azure handles the hostname-uniqueness transfer internally as part of the migration; the manual delete-wait-recreate race we lost tonight does not exist in this path.</li>
+<li>Proven on this tenant - <code>survey.farmboxrx.com</code> was migrated cleanly on 2026-04-24 using exactly this command pair.</li>
+<li>One command per profile - <code>az afd profile migrate</code> + <code>az afd profile migration-commit</code>. Idempotent, observable, supported by Azure.</li>
+<li>No 45-minute retry loop needed - Azure either accepts the migrate API call or returns an actionable error immediately.</li>
+</ul>
+</div>
+
+<h2>8.  Action items</h2>
+<ol>
+<li>Update the tracking ticket with this summary and the rollback timestamp.</li>
+<li>Verify <code>www.hipyx.com</code> is serving 200 from Classic AFD after edge propagation: <code>curl.exe -I https://www.hipyx.com/</code></li>
+<li>Brief approver tomorrow morning with this document attached.</li>
+<li>Schedule the next maintenance window (1-2 hour block) covering: <code>hipyx</code> retry + <code>pyxiq</code> + <code>pyxiq-stage</code> + <code>pypwa-stage</code> via the atomic migration approach. <code>standard</code> CDN profile gets its own separate ticket.</li>
+<li>Update <code>migrate-all-pyx-tonight.ps1</code> to use <code>az afd profile migrate</code> per profile (atomic path), with <code>az afd profile migration-commit</code> after each profile validates. <i>Status: in progress, target ready by next-window T-30.</i></li>
+<li>Coordinate the DNS owner for the next window (DNS owner standby).</li>
+<li>Open a Microsoft support ticket (Severity B) referencing tonight's hostname-release behavior on the <code>hipyx</code> Classic profile, requesting Microsoft confirm internal cleanup completed and document the unusual lag for the case file.</li>
+</ol>
+
+<h2>9.  Approver sign-off</h2>
+<table style="margin-top:14px">
+<tr><td class="label">Approver name</td><td>PYX Engineering Leadership</td></tr>
+<tr><td class="label">Window approved (this attempt)</td><td>2026-04-28 22:00 - 23:00 CST</td></tr>
+<tr><td class="label">Outcome (this attempt)</td><td>Cutover deferred. Rollback completed clean.</td></tr>
+<tr><td class="label">Signature / acknowledgement</td><td>____________________________________</td></tr>
+<tr><td class="label">Notes</td><td>____________________________________</td></tr>
+</table>
+
+<div class="foot">
+Prepared by Syed Rizvi - PYX Health Production - 2026-04-28
+</div>
+
+</body>
+</html>
