@@ -109,6 +109,15 @@ foreach ($cp in $classicList) {
            elseif ($reqTotal -lt 100000) { "ACTIVE-LOW-TRAFFIC" }
            else { "ACTIVE-HIGH-TRAFFIC" }
 
+    # Cost projection (Classic): base $35/mo + bandwidth $0.082/GB outbound (Zone 1, US)
+    # Classic does NOT have per-request charges (bundled in base)
+    $bytesGB30d        = [math]::Round($bytesTotal / 1GB, 2)
+    $bandwidthCost30d  = [math]::Round($bytesGB30d * 0.082, 2)
+    $bandwidthCostMo   = $bandwidthCost30d  # 30 days ~= 1 month
+    $requestCostMo     = 0
+    $totalMonthlyCost  = 35 + $bandwidthCostMo
+    $totalAnnualCost   = $totalMonthlyCost * 12
+
     $results += [PSCustomObject]@{
         Name = $cp
         Type = "AFD-Classic"
@@ -122,7 +131,11 @@ foreach ($cp in $classicList) {
         WafPolicies = ($wafs -join ', ')
         Requests30d = $reqTotal
         Bytes30d = $bytesTotal
-        BytesGB30d = [math]::Round($bytesTotal / 1GB, 2)
+        BytesGB30d = $bytesGB30d
+        BandwidthCostMonthly = $bandwidthCostMo
+        RequestCostMonthly = $requestCostMo
+        TotalMonthlyCost = [math]::Round($totalMonthlyCost, 2)
+        TotalAnnualCost = [math]::Round($totalAnnualCost, 2)
         Recommendation = $rec
     }
 }
@@ -191,6 +204,14 @@ foreach ($p in $cdnList) {
            elseif ($reqTotal -lt 100000) { "ACTIVE-LOW-TRAFFIC" }
            else { "ACTIVE-HIGH-TRAFFIC" }
 
+    # Cost projection (Standard / Premium): base + bandwidth $0.082/GB + per-request after 10M free
+    $bytesGB30d        = [math]::Round($bytesTotal / 1GB, 2)
+    $bandwidthCostMo   = [math]::Round($bytesGB30d * 0.082, 2)
+    $billableRequests  = [math]::Max(0, $reqTotal - 10000000)
+    $requestCostMo     = [math]::Round(($billableRequests / 10000) * 0.01, 2)
+    $totalMonthlyCost  = $basePrice + $bandwidthCostMo + $requestCostMo
+    $totalAnnualCost   = $totalMonthlyCost * 12
+
     $results += [PSCustomObject]@{
         Name = $p.Name
         Type = "AFD-Standard"
@@ -204,7 +225,11 @@ foreach ($p in $cdnList) {
         WafPolicies = "via security-policy ($secCount)"
         Requests30d = $reqTotal
         Bytes30d = $bytesTotal
-        BytesGB30d = [math]::Round($bytesTotal / 1GB, 2)
+        BytesGB30d = $bytesGB30d
+        BandwidthCostMonthly = $bandwidthCostMo
+        RequestCostMonthly = $requestCostMo
+        TotalMonthlyCost = [math]::Round($totalMonthlyCost, 2)
+        TotalAnnualCost = [math]::Round($totalAnnualCost, 2)
         Recommendation = $rec
     }
 }
@@ -233,7 +258,7 @@ $rowsAll = ($results | Sort-Object Type, Name | ForEach-Object {
         "ACTIVE-HIGH-TRAFFIC" { "rec rec-active" }
         default { "rec" }
     }
-    "<tr><td><b>$($_.Name)</b><br/>$scopeBadge</td><td>$($_.Type)</td><td><code>$($_.Sku)</code></td><td>`$$($_.BasePriceMonthly)/mo</td><td>$($_.CustomDomainCount)<br/><span class='dim'>$([System.Web.HttpUtility]::HtmlEncode($_.CustomDomains))</span></td><td>$($_.RoutingRuleCount)</td><td>$($_.BackendPoolCount)</td><td><code>$($_.WafPolicies)</code></td><td style='text-align:right'>$('{0:N0}' -f $_.Requests30d)</td><td style='text-align:right'>$($_.BytesGB30d) GB</td><td><span class='$recClass'>$($_.Recommendation)</span></td></tr>"
+    "<tr><td><b>$($_.Name)</b><br/>$scopeBadge</td><td>$($_.Type)</td><td><code>$($_.Sku)</code></td><td style='text-align:right'>`$$($_.BasePriceMonthly)/mo</td><td>$($_.CustomDomainCount)<br/><span class='dim'>$([System.Web.HttpUtility]::HtmlEncode($_.CustomDomains))</span></td><td>$($_.RoutingRuleCount)</td><td>$($_.BackendPoolCount)</td><td><code>$($_.WafPolicies)</code></td><td style='text-align:right'>$('{0:N0}' -f $_.Requests30d)</td><td style='text-align:right'>$($_.BytesGB30d) GB</td><td style='text-align:right'>`$$('{0:N2}' -f $_.BandwidthCostMonthly)</td><td style='text-align:right'>`$$('{0:N2}' -f $_.RequestCostMonthly)</td><td style='text-align:right'><b>`$$('{0:N0}' -f $_.TotalAnnualCost)</b></td><td><span class='$recClass'>$($_.Recommendation)</span></td></tr>"
 }) -join "`n"
 
 # Decommission analysis
@@ -244,14 +269,25 @@ $decomSavingsAnnual  = $decomSavingsMonthly * 12
 $lowSavingsMonthly   = ($lowUsage | Measure-Object BasePriceMonthly -Sum).Sum
 $lowSavingsAnnual    = $lowSavingsMonthly * 12
 
+# Cost totals (across all profiles)
+$totalMonthlyAll  = [math]::Round((($results | Measure-Object TotalMonthlyCost -Sum).Sum), 2)
+$totalAnnualAll   = [math]::Round((($results | Measure-Object TotalAnnualCost -Sum).Sum), 2)
+$totalBaseAnnual  = (($results | Measure-Object BasePriceMonthly -Sum).Sum) * 12
+$totalBwAnnual    = [math]::Round((($results | Measure-Object BandwidthCostMonthly -Sum).Sum) * 12, 2)
+$totalReqAnnual   = [math]::Round((($results | Measure-Object RequestCostMonthly -Sum).Sum) * 12, 2)
+
+# Decommission savings (full annual cost, not just base, since we'd save bandwidth too)
+$decomFullSavingsAnnual = [math]::Round((($decomCandidates | Measure-Object TotalAnnualCost -Sum).Sum), 2)
+$lowFullSavingsAnnual   = [math]::Round((($lowUsage | Measure-Object TotalAnnualCost -Sum).Sum), 2)
+
 $decomRows = if ($decomCandidates.Count -eq 0) { "<tr><td colspan='5' class='dim'>No zero-traffic profiles found.</td></tr>" } else {
     ($decomCandidates | ForEach-Object {
-        "<tr><td><b>$($_.Name)</b></td><td>$($_.Type)</td><td>$($_.CustomDomainCount) ($([System.Web.HttpUtility]::HtmlEncode($_.CustomDomains)))</td><td style='text-align:right'>$('{0:N0}' -f $_.Requests30d)</td><td style='text-align:right'>`$$($_.BasePriceMonthly)/mo  =  `$$($_.BasePriceMonthly * 12)/yr</td></tr>"
+        "<tr><td><b>$($_.Name)</b></td><td>$($_.Type)</td><td>$($_.CustomDomainCount) ($([System.Web.HttpUtility]::HtmlEncode($_.CustomDomains)))</td><td style='text-align:right'>$('{0:N0}' -f $_.Requests30d)</td><td style='text-align:right'>`$$('{0:N0}' -f $_.TotalAnnualCost)/yr</td></tr>"
     }) -join "`n"
 }
 $lowRows = if ($lowUsage.Count -eq 0) { "<tr><td colspan='5' class='dim'>No low-usage profiles found.</td></tr>" } else {
     ($lowUsage | ForEach-Object {
-        "<tr><td><b>$($_.Name)</b></td><td>$($_.Type)</td><td>$($_.CustomDomainCount) ($([System.Web.HttpUtility]::HtmlEncode($_.CustomDomains)))</td><td style='text-align:right'>$('{0:N0}' -f $_.Requests30d)</td><td style='text-align:right'>`$$($_.BasePriceMonthly)/mo  =  `$$($_.BasePriceMonthly * 12)/yr</td></tr>"
+        "<tr><td><b>$($_.Name)</b></td><td>$($_.Type)</td><td>$($_.CustomDomainCount) ($([System.Web.HttpUtility]::HtmlEncode($_.CustomDomains)))</td><td style='text-align:right'>$('{0:N0}' -f $_.Requests30d)</td><td style='text-align:right'>`$$('{0:N0}' -f $_.TotalAnnualCost)/yr</td></tr>"
     }) -join "`n"
 }
 
@@ -303,16 +339,19 @@ Net effect: roughly zero cost difference. Slight reduction is possible since Mic
 </div>
 
 <div class="savings-callout">
+<b>Current Front Door spend (projected annual, all profiles):</b> <code>\$$('{0:N0}' -f $totalAnnualAll)/year</code><br>
+&nbsp;&nbsp;Base fees: <code>\$$('{0:N0}' -f $totalBaseAnnual)/yr</code> &nbsp;|&nbsp; Bandwidth: <code>\$$('{0:N0}' -f $totalBwAnnual)/yr</code> &nbsp;|&nbsp; Per-request (Standard tier 1 over 10M/mo): <code>\$$('{0:N0}' -f $totalReqAnnual)/yr</code><br><br>
 <b>Decommission opportunities identified:</b> $($decomCandidates.Count) zero-traffic profile(s), $($lowUsage.Count) low-usage profile(s).<br>
-Potential annual savings if zero-traffic profiles are decommissioned: <b>`$$('{0:N0}' -f $decomSavingsAnnual)/year</b> in base fees.<br>
-Additional potential if low-usage profiles are reviewed and consolidated: <b>`$$('{0:N0}' -f $lowSavingsAnnual)/year</b>.<br>
-Details in Section 3 below. These are <i>candidates</i> - each one needs an owner-confirmation before delete.
+Potential annual savings if all zero-traffic profiles are decommissioned: <b>\$$('{0:N0}' -f $decomFullSavingsAnnual)/year</b> (full cost: base + bandwidth + requests).<br>
+Additional potential if all low-usage profiles are consolidated: <b>\$$('{0:N0}' -f $lowFullSavingsAnnual)/year</b>.<br>
+Combined upper bound: <b>\$$('{0:N0}' -f ($decomFullSavingsAnnual + $lowFullSavingsAnnual))/year</b>.<br>
+Details in Sections 3 and 4. These are <i>candidates</i> - each one needs an owner-confirmation before delete.
 </div>
 
 <h2>2.  All Front Door profiles in <code>$ResourceGroup</code></h2>
-<p>30-day RequestCount drives the recommendation. Thresholds: 0 = decommission candidate, &lt;1K = low-usage review, &lt;100K = active low-traffic, &gt;=100K = active high-traffic.</p>
+<p>30-day RequestCount drives the recommendation. Thresholds: 0 = decommission candidate, &lt;1K = low-usage review, &lt;100K = active low-traffic, &gt;=100K = active high-traffic. Cost columns are projections based on Microsoft's published Standard SKU rates: \$0.082/GB outbound bandwidth, \$0.01 per 10K requests over the 10M/month free tier (Standard only - Classic has no per-request fee).</p>
 <table>
-<thead><tr><th>Profile</th><th>Type</th><th>SKU</th><th>Base /mo</th><th>Custom domains</th><th>Rules</th><th>Pools</th><th>WAF</th><th style='text-align:right'>Requests (30d)</th><th style='text-align:right'>Bytes (30d)</th><th>Recommendation</th></tr></thead>
+<thead><tr><th>Profile</th><th>Type</th><th>SKU</th><th style='text-align:right'>Base /mo</th><th>Custom domains</th><th>Rules</th><th>Pools</th><th>WAF</th><th style='text-align:right'>Requests (30d)</th><th style='text-align:right'>Bytes (30d)</th><th style='text-align:right'>BW \$/mo</th><th style='text-align:right'>Req \$/mo</th><th style='text-align:right'>Annual \$</th><th>Recommendation</th></tr></thead>
 <tbody>
 $rowsAll
 </tbody></table>
@@ -320,20 +359,20 @@ $rowsAll
 <h2>3.  Decommission candidates  -  zero traffic in $($LookbackDays) days</h2>
 <p>These profiles served <b>0 requests</b> over the lookback window. Almost certainly safe to delete after a quick owner-confirmation. Deletion saves the profile base fee plus any incidental WAF / rules-engine / origin-group costs. <b>Verify each one is not still wired to any production DNS record before deleting.</b></p>
 <table>
-<thead><tr><th>Profile</th><th>Type</th><th>Custom domains</th><th style='text-align:right'>Requests (30d)</th><th style='text-align:right'>Base fee</th></tr></thead>
+<thead><tr><th>Profile</th><th>Type</th><th>Custom domains</th><th style='text-align:right'>Requests (30d)</th><th style='text-align:right'>Annual cost (full)</th></tr></thead>
 <tbody>
 $decomRows
 </tbody></table>
-<p><b>Total potential annual savings (zero-traffic):</b> <code>\$$('{0:N0}' -f $decomSavingsAnnual)/year</code> in base fees alone, more if WAF policies and rules engines can also be retired with the profile.</p>
+<p><b>Total potential annual savings (zero-traffic):</b> <code>\$$('{0:N0}' -f $decomFullSavingsAnnual)/year</code> across $($decomCandidates.Count) profile(s).</p>
 
 <h2>4.  Low-usage profiles  -  &lt;1,000 requests in $($LookbackDays) days</h2>
 <p>These profiles are technically alive but barely used. They may be sandbox / test / legacy environments that can be merged into a sandbox profile or simply retired. Owner-review recommended before any action.</p>
 <table>
-<thead><tr><th>Profile</th><th>Type</th><th>Custom domains</th><th style='text-align:right'>Requests (30d)</th><th style='text-align:right'>Base fee</th></tr></thead>
+<thead><tr><th>Profile</th><th>Type</th><th>Custom domains</th><th style='text-align:right'>Requests (30d)</th><th style='text-align:right'>Annual cost (full)</th></tr></thead>
 <tbody>
 $lowRows
 </tbody></table>
-<p><b>Additional potential annual savings (low-usage, if all consolidated):</b> <code>\$$('{0:N0}' -f $lowSavingsAnnual)/year</code>.</p>
+<p><b>Additional potential annual savings (low-usage, if all consolidated):</b> <code>\$$('{0:N0}' -f $lowFullSavingsAnnual)/year</code> across $($lowUsage.Count) profile(s).</p>
 
 <h2>5.  Migration scope (this CR)</h2>
 <table>
