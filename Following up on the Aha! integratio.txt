@@ -1,0 +1,7 @@
+Following up on the Aha! integration webhook tied to the pending offboarding.
+
+Recommended path to resolve:
+
+Once an Aha! admin can share the integration's target URL and last-triggered timestamp, IT/Security will document it as part of offboarding evidence and disable it before SSO removal. If the integration is still active, it can be re-authorized under a service account; if dormant, it is deleted after a 30-day quiet window. This aligns with HITRUST and HIPAA access-management practice.
+
+For routing on similar items going forward: anything that crosses systems - SSO, integrations, webhooks, API tokens between SaaS apps - IT/Security is the right first stop. Domain teams can stay focused on their work; IT owns the identity and integration layer.
