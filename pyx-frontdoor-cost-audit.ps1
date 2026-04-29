@@ -109,6 +109,19 @@ foreach ($cp in $classicList) {
            elseif ($reqTotal -lt 100000) { "ACTIVE-LOW-TRAFFIC" }
            else { "ACTIVE-HIGH-TRAFFIC" }
 
+    # Action and priority - Classic SKU adds urgency due to 2027-03-31 retirement
+    $action = if ($reqTotal -eq 0) { "DELETE" }
+              elseif ($reqTotal -lt 1000) { "VERIFY" }
+              else { "MIGRATE" }
+    $priority = if ($reqTotal -ge 100000) { "P0 - Critical" }
+                elseif ($reqTotal -ge 1000) { "P1 - High" }
+                elseif ($reqTotal -gt 0) { "P2 - Medium" }
+                else { "P3 - Low" }
+    $rationale = if ($reqTotal -eq 0) { "Classic, no traffic. Delete - avoids needing migration before 2027-03-31 retirement." }
+                 elseif ($reqTotal -lt 1000) { "Classic SKU with very low traffic. Verify with workload owner; may be DR/standby. If unused, delete." }
+                 elseif ($reqTotal -lt 100000) { "Classic SKU with moderate traffic. Migrate to Standard before 2027-03-31 retirement." }
+                 else { "Active production traffic on Classic SKU. Classic retires 2027-03-31 - migrate ASAP." }
+
     # Cost projection (Classic): base $35/mo + bandwidth $0.082/GB outbound (Zone 1, US)
     # Classic does NOT have per-request charges (bundled in base)
     $bytesGB30d        = [math]::Round($bytesTotal / 1GB, 2)
@@ -137,6 +150,9 @@ foreach ($cp in $classicList) {
         TotalMonthlyCost = [math]::Round($totalMonthlyCost, 2)
         TotalAnnualCost = [math]::Round($totalAnnualCost, 2)
         Recommendation = $rec
+        Action = $action
+        Priority = $priority
+        Rationale = $rationale
     }
 }
 
@@ -204,6 +220,23 @@ foreach ($p in $cdnList) {
            elseif ($reqTotal -lt 100000) { "ACTIVE-LOW-TRAFFIC" }
            else { "ACTIVE-HIGH-TRAFFIC" }
 
+    # Action and priority - Premium SKU at zero traffic is the highest-priority delete
+    $action = if ($reqTotal -eq 0) {
+                  if ($isPremium) { "DELETE-PREMIUM-WASTE" } else { "DELETE" }
+              }
+              elseif ($reqTotal -lt 1000) { "VERIFY" }
+              else { "KEEP" }
+    $priority = if ($reqTotal -eq 0 -and $isPremium) { "P0 - Critical (cost waste)" }
+                elseif ($reqTotal -ge 100000) { "P0 - Critical" }
+                elseif ($reqTotal -ge 1000) { "P1 - High" }
+                elseif ($reqTotal -gt 0) { "P2 - Medium" }
+                else { "P3 - Low" }
+    $rationale = if ($reqTotal -eq 0 -and $isPremium) { "Premium SKU at zero traffic - approximately \$330/month or \$3,960/year wasted. Confirm not pre-launch standby; delete to stop billing immediately." }
+                 elseif ($reqTotal -eq 0) { "Standard profile, no traffic. Delete unless owner confirms DR/standby use." }
+                 elseif ($reqTotal -lt 1000) { "Low traffic on Standard/Premium. Verify with workload owner before any action." }
+                 elseif ($reqTotal -lt 100000) { "Active on Standard/Premium - keep, no action needed." }
+                 else { "Production-tier traffic on Standard/Premium - keep." }
+
     # Cost projection (Standard / Premium): base + bandwidth $0.082/GB + per-request after 10M free
     $bytesGB30d        = [math]::Round($bytesTotal / 1GB, 2)
     $bandwidthCostMo   = [math]::Round($bytesGB30d * 0.082, 2)
@@ -231,6 +264,9 @@ foreach ($p in $cdnList) {
         TotalMonthlyCost = [math]::Round($totalMonthlyCost, 2)
         TotalAnnualCost = [math]::Round($totalAnnualCost, 2)
         Recommendation = $rec
+        Action = $action
+        Priority = $priority
+        Rationale = $rationale
     }
 }
 
@@ -323,8 +359,38 @@ code{font-family:Consolas,monospace;font-size:11.5px;background:#F5F7FA;padding:
 .savings-callout b{color:#9B2226;font-size:18px}
 </style></head><body>
 
-<h1>Front Door cost-impact audit</h1>
-<div class="subtitle">Subscription-wide inventory of every Azure Front Door profile in the production resource group, with 30-day traffic counts and the cost-relevant configuration (SKU, WAF, rules) per profile. Generated $(Get-Date -Format 'yyyy-MM-dd HH:mm') for the AFD Classic-to-Standard migration cost review.</div>
+<h1>Front Door cost-impact audit + cross-validation</h1>
+<div class="subtitle">Subscription-wide inventory of every Azure Front Door profile in the production resource group, with 30-day traffic counts and the cost-relevant configuration (SKU, WAF, rules) per profile. Generated $(Get-Date -Format 'yyyy-MM-dd HH:mm') as an independent cross-check against the standalone audit spreadsheet circulated earlier today, plus three open concerns / questions for the approver.</div>
+
+<h2>0.  Concerns and questions for the approver</h2>
+
+<div class="box box-amber">
+<b>Q1 - Biggest immediate cost saver: <code>afd-drivershealth-api-production</code></b><br><br>
+Per the standalone audit, this profile is on the <b>Premium</b> SKU (<code>Premium_AzureFrontDoor</code>) with <b>zero traffic</b> over the 90-day window. Premium base SKU runs roughly \$330/month - that is approximately <b>\$3,960/year being burned</b> with no traffic served. If the drivershealth team confirms it is not pre-launch standby or DR, deleting it dwarfs every other Phase 1 quick-win combined. Recommend fast-tracking the owner-confirm conversation - this single delete justifies the entire audit effort.
+</div>
+
+<div class="box">
+<b>Q2 - Clarification on <code>hipyx</code> vs <code>hipyx-std</code> - they are NOT redundant</b><br><br>
+The standalone audit flagged hipyx (Classic, ~7,957 90d req) with the question "Confirm if hipyx-std (Standard) supersedes it; if so retire, else migrate."<br><br>
+<b>Answer: they serve different custom domains today.</b><br>
+- <code>hipyx</code> (Classic) serves <code>www.hipyx.com</code> - the live www traffic the 7,957 90d count reflects.<br>
+- <code>hipyx-std</code> (Standard) serves <code>survey.farmboxrx.com</code> - migrated from Classic in the prior FX cutover.<br><br>
+Both profiles are necessary today. The path forward is to migrate hipyx (Classic) onto Standard - this brings www.hipyx.com onto the same fabric as survey, after which Classic hipyx can be retired (not before). This aligns with the standalone audit's Phase 3 recommendation, just sequenced earlier so it converges with the in-flight migration work.
+</div>
+
+<div class="box box-red">
+<b>Q3 - Decision needed: hold tonight's migration window or proceed?</b><br><br>
+The migration script for tonight (22:15 CST window) executes <code>az afd profile migrate</code> + <code>migration-commit</code> for the four AFD Classic profiles in scope: <code>hipyx</code>, <code>pyxiq</code>, <code>pyxiq-stage</code>, <code>pypwa-stage</code>. This is the same direction as the standalone audit's Phase 3 (Classic SKU migration), it just executes the highest-priority one (<code>pyxiq</code>, P0 Critical, 127,622 90d requests on Classic) earlier than the audit's Month 1-3 timeline.<br><br>
+<b>Two options:</b><br>
+&nbsp;&nbsp;<b>(A)</b> Proceed tonight - <code>pyxiq</code> migration is most urgent (active production on Classic SKU before the 2027-03-31 retirement), and the atomic API path was validated last week on <code>survey.farmboxrx.com</code>. Rollback path is documented and proven.<br>
+&nbsp;&nbsp;<b>(B)</b> Hold tonight - wait for Robert's input on the audit before any further migrations, treat tonight as planning-only.<br><br>
+Either is defensible. Decision is yours.
+</div>
+
+<div class="box box-green">
+<b>Q4 - Cross-validation status</b><br><br>
+The data table below was pulled live from Azure Monitor (RequestCount + ResponseSize / BillableResponseSize aggregations, $($LookbackDays)-day window) directly via <code>az monitor metrics list</code>. Compare the request counts and recommendations against the standalone audit spreadsheet. Material differences would indicate either (a) a different lookback window (this script uses $($LookbackDays) days, the standalone audit appears to use 90 days), (b) a metric-namespace difference between Classic and Standard SKUs, or (c) timing drift between the two pulls. The two should agree on the directional recommendations: ACTIVE/KEEP, LOW/VERIFY, STALE/DECOMMISSION.
+</div>
 
 <h2>1.  Headline answers</h2>
 <div class="box box-green">
@@ -347,6 +413,47 @@ Additional potential if all low-usage profiles are consolidated: <b>\$$('{0:N0}'
 Combined upper bound: <b>\$$('{0:N0}' -f ($decomFullSavingsAnnual + $lowFullSavingsAnnual))/year</b>.<br>
 Details in Sections 3 and 4. These are <i>candidates</i> - each one needs an owner-confirmation before delete.
 </div>
+
+<h2>1a.  Action summary - what to delete, keep, verify, migrate</h2>
+<p>Every Front Door profile in <code>$ResourceGroup</code> classified by recommended action. Numbers below are projected annual cost (base + bandwidth + requests). Amounts in the DELETE rows represent immediate annual savings if the owner confirms and the delete is executed.</p>
+
+<table>
+<thead><tr><th style='width:12%'>Action</th><th style='width:8%'>Priority</th><th>Profile</th><th>SKU</th><th style='text-align:right'>30d requests</th><th style='text-align:right'>Annual cost / savings</th></tr></thead>
+<tbody>
+"@
+
+# Group by Action: DELETE-PREMIUM-WASTE, DELETE, VERIFY, MIGRATE, KEEP
+$actionOrder = @("DELETE-PREMIUM-WASTE","DELETE","VERIFY","MIGRATE","KEEP")
+$grouped = @{}
+foreach ($a in $actionOrder) { $grouped[$a] = @() }
+foreach ($r in $results) {
+    if ($grouped.ContainsKey($r.Action)) { $grouped[$r.Action] += $r }
+    else { $grouped[$r.Action] = @($r) }
+}
+
+foreach ($a in $actionOrder) {
+    if ($grouped[$a].Count -eq 0) { continue }
+    $actionTotal = ($grouped[$a] | Measure-Object TotalAnnualCost -Sum).Sum
+    $rowClass = switch ($a) {
+        "DELETE-PREMIUM-WASTE" { "act-delete-prem" }
+        "DELETE" { "act-delete" }
+        "VERIFY" { "act-verify" }
+        "MIGRATE" { "act-migrate" }
+        "KEEP" { "act-keep" }
+        default { "" }
+    }
+    $actionLabel = switch ($a) {
+        "DELETE-PREMIUM-WASTE" { "DELETE  (Premium @ \$0)" }
+        default { $a }
+    }
+    $html += "<tr class='action-header'><td colspan='6'><b>$actionLabel</b> &mdash; $($grouped[$a].Count) profile(s) &mdash; <b>\$$('{0:N0}' -f $actionTotal)/yr</b></td></tr>`n"
+    foreach ($r in ($grouped[$a] | Sort-Object Requests30d -Descending)) {
+        $html += "<tr class='$rowClass'><td><span class='act $rowClass'>$($r.Action)</span></td><td>$($r.Priority)</td><td><b>$($r.Name)</b><br/><span class='dim'>$([System.Web.HttpUtility]::HtmlEncode($r.CustomDomains))</span></td><td><code>$($r.Sku)</code></td><td style='text-align:right'>$('{0:N0}' -f $r.Requests30d)</td><td style='text-align:right'><b>\$$('{0:N0}' -f $r.TotalAnnualCost)</b></td></tr>`n"
+    }
+}
+
+$html += @"
+</tbody></table>
 
 <h2>2.  All Front Door profiles in <code>$ResourceGroup</code></h2>
 <p>30-day RequestCount drives the recommendation. Thresholds: 0 = decommission candidate, &lt;1K = low-usage review, &lt;100K = active low-traffic, &gt;=100K = active high-traffic. Cost columns are projections based on Microsoft's published Standard SKU rates: \$0.082/GB outbound bandwidth, \$0.01 per 10K requests over the 10M/month free tier (Standard only - Classic has no per-request fee).</p>
