@@ -1,0 +1,32 @@
+Tony, that's Aha!'s outbound webhook — when records change in Aha!, it POSTs a JSON payload to whatever URL was configured. Open the integration and check the "Webhook URL" field. If it's pointing to:
+
+A PYX internal endpoint (api.pyxhealth.com / a Lambda / Function URL) — engineering owns the receiver, ping them before disabling
+A Slack/Teams incoming webhook (hooks.slack.com or office.com webhook URL) — easy, just a notification feed, can be re-pointed or deleted
+Zapier / Make.com — likely a one-off automation Hunter set up; check "last triggered" date
+Look at "Last triggered" timestamp — if it's months stale, delete it with Hunter. If it's recent, we need to re-own it before removing him. Want me to take a look?
+
+----------------------------------------------------------------------------------------
+
+That's a Slack notifier — Aha! posts feature/release updates to a Slack channel as Hunter. Fix is 30 seconds: open the integration, click Re-authorize, sign in as you (or a shared admin), save. Then Hunter can be removed cleanly. The Slack channel keeps working under your auth.
+
+------------------------------------------------------------------------------------------
+That's a 2-way sync between Aha! features and {Jira/ADO} work items — Hunter set it up, so it pushes/pulls under his Aha! identity. Don't delete him yet — if the sync breaks mid-flight, features and work items can fall out of alignment. Steps:
+
+Open the integration in Aha!
+Re-authorize as an admin (you or a shared svc account)
+Run a manual sync to confirm it still works
+Then safe to remove Hunter
+
+---------------------------------------------------------------------------------------------
+
+If "last triggered" is months old and no one recognizes the URL, capture two things before deleting:
+
+Screenshot of the integration config (URL, events, headers)
+The receiving URL — paste it into a browser or curl it to see what's on the other end (could be an internal tool we forgot about)
+Then disable (don't delete) for 2 weeks. If no one screams, delete. That way if something breaks we can re-enable instantly.
+
+-----------------------------------------------------------------------------------------------------------------
+
+Short answer: it's a webhook authenticated as Hunter that fires when Aha! records change — when he's removed, the webhook stops working. We shouldn't delete him until we know where it's pointing and either confirm it's dead or re-own it under an admin.
+
+Click the "1 integration" link on that Edit User screen — it'll show the webhook URL and last-triggered date. If you screenshot that, I can tell you in 30 seconds whether it's safe to kill or needs to be re-authorized first
