@@ -541,7 +541,15 @@ foreach ($p in $plan) {
             $results += $r; Save-State -Plan $plan -Results $results; continue
         }
 
-        if ($defaultSku) {
+        $preferredForUse = if ($PreferredTier -and $PreferredTier.ContainsKey($p.Classic)) { $PreferredTier[$p.Classic] } else { $null }
+        if ($preferredForUse -eq "Standard") {
+            $skuToUse = "Standard_AzureFrontDoor"
+            if ($defaultSku -and $defaultSku -ne $skuToUse) {
+                Log "PreferredTier=Standard for '$($p.Classic)' overrides Microsoft DefaultSku=$defaultSku -- if Microsoft hard-blocks, Prepare will fail with explicit reason" "WARN"
+            }
+        } elseif ($preferredForUse -eq "Premium") {
+            $skuToUse = "Premium_AzureFrontDoor"
+        } elseif ($defaultSku) {
             $skuToUse = $defaultSku
             if ($defaultSku -ne $p.ResolvedTier) {
                 Log "Microsoft DefaultSku ($defaultSku) overrides resolved tier ($($p.ResolvedTier))" "WARN"
