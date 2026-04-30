@@ -286,30 +286,36 @@ if ($ResumeFromState -and (Test-Path $ResumeFromState)) {
         $wafPolicies = @()
         $hasManagedRules = $false
         if ($found.Type -eq "AFD") {
-            try {
-                $wafResources = Get-AzResource -ResourceType "Microsoft.Network/frontdoorwebapplicationfirewallpolicies" -ErrorAction SilentlyContinue
-                foreach ($wafRes in $wafResources) {
-                    try {
-                        $w = Get-AzFrontDoorWafPolicy -ResourceGroupName $wafRes.ResourceGroupName -Name $wafRes.Name -ErrorAction Stop
-                    } catch { continue }
-                    if ($w.Sku -ne "Classic_AzureFrontDoor") { continue }
-                    $linkedToThis = $false
-                    if ($w.FrontendEndpointLinks) {
-                        foreach ($link in $w.FrontendEndpointLinks) {
-                            $lid = if ($link.Id) { $link.Id } else { "$link" }
-                            if ($lid -match "/frontDoors/$([regex]::Escape($cp))/") { $linkedToThis = $true; break }
-                        }
+            $wafIdsFromFEs = @{}
+            if ($afdProfile -and $afdProfile.FrontendEndpoints) {
+                foreach ($fe in $afdProfile.FrontendEndpoints) {
+                    if ($fe.WebApplicationFirewallPolicyLink -and $fe.WebApplicationFirewallPolicyLink.Id) {
+                        $wafIdsFromFEs[$fe.WebApplicationFirewallPolicyLink.Id] = $true
                     }
-                    if ($linkedToThis) {
+                }
+            }
+            Log "$($wafIdsFromFEs.Count) WAF link(s) found on Classic FrontendEndpoints"
+            foreach ($wafId in $wafIdsFromFEs.Keys) {
+                try {
+                    $parts   = $wafId -split "/"
+                    $wafSub  = $parts[2]
+                    $wafRg   = $parts[4]
+                    $wafName = $parts[-1]
+                    if ($wafSub -ne $found.Sub) {
+                        Set-AzContext -SubscriptionId $wafSub -TenantId $ctx.Tenant.Id -ErrorAction SilentlyContinue | Out-Null
+                    }
+                    $w = Get-AzFrontDoorWafPolicy -ResourceGroupName $wafRg -Name $wafName -ErrorAction Stop
+                    if ($w) {
                         $wafPolicies += $w
                         if ($w.ManagedRules -and @($w.ManagedRules.ManagedRuleSets).Count -gt 0) {
                             $hasManagedRules = $true
                         }
                     }
+                } catch {
+                    Log ("  WAF lookup failed for {0}: {1}" -f $wafId, $_.Exception.Message) "WARN"
                 }
-            } catch {
-                Log "WAF enumeration error: $($_.Exception.Message)" "WARN"
             }
+            Set-AzContext -SubscriptionId $found.Sub -TenantId $ctx.Tenant.Id -ErrorAction SilentlyContinue | Out-Null
         }
         Log "$($wafPolicies.Count) Classic WAF policy(ies) linked. Managed rule sets present: $hasManagedRules"
         if ($wafPolicies.Count -gt 0) {
