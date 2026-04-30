@@ -97,7 +97,7 @@ function Invoke-WithRetry {
                 throw
             }
             $wait = $Backoff * $i
-            Log "$Description attempt $i failed: $($_.Exception.Message) — retrying in ${wait}s" "WARN"
+            Log "$Description attempt $i failed: $($_.Exception.Message) -- retrying in ${wait}s" "WARN"
             Start-Sleep -Seconds $wait
         }
     }
@@ -131,13 +131,13 @@ if ($OnlyProfiles.Count -gt 0) {
     $ProfileMap = $filtered
 }
 
-Banner "PYX Front Door migration — Classic to Standard/Premium AFD"
+Banner "PYX Front Door migration -- Classic to Standard/Premium AFD"
 Log "Profiles in scope: $($ProfileMap.Keys -join ', ')"
 Log "Tier strategy:     $TierStrategy"
 Log "Report directory:  $ReportDir"
 Log "PowerShell:        $($PSVersionTable.PSVersion)"
 
-Banner "Phase 0a — Module install / import"
+Banner "Phase 0a -- Module install / import"
 $requiredModules = @("Az.Accounts","Az.Cdn","Az.FrontDoor","Az.Resources","Az.KeyVault")
 foreach ($m in $requiredModules) {
     if (-not (Get-Module -ListAvailable -Name $m -ErrorAction SilentlyContinue)) {
@@ -149,13 +149,13 @@ foreach ($m in $requiredModules) {
     Log "$m loaded (v$ver)" "OK"
 }
 
-Banner "Phase 0b — Connect-AzAccount"
+Banner "Phase 0b -- Connect-AzAccount"
 $ctx = Get-AzContext -ErrorAction SilentlyContinue
 $needConnect = $false
 if (-not $ctx) {
     $needConnect = $true
 } elseif ($TenantId -and $ctx.Tenant.Id -ne $TenantId) {
-    Log "Current tenant $($ctx.Tenant.Id) does not match requested $TenantId — reconnecting" "WARN"
+    Log "Current tenant $($ctx.Tenant.Id) does not match requested $TenantId -- reconnecting" "WARN"
     $needConnect = $true
 }
 if ($needConnect) {
@@ -173,13 +173,13 @@ if ($SubscriptionId) { $allSubs = $allSubs | Where-Object { $_.Id -eq $Subscript
 Log "Subscriptions enabled in tenant: $($allSubs.Count)"
 
 if ($ResumeFromState -and (Test-Path $ResumeFromState)) {
-    Banner "Resume mode — loading state from $ResumeFromState"
+    Banner "Resume mode -- loading state from $ResumeFromState"
     $loaded = Get-Content $ResumeFromState -Raw | ConvertFrom-Json
     $plan    = $loaded.plan
     $results = $loaded.results
     Log "Resumed: $($plan.Count) profiles in plan, $($results.Count) results captured" "OK"
 } else {
-    Banner "Phase 1 — Multi-subscription discovery"
+    Banner "Phase 1 -- Multi-subscription discovery"
     $plan = @()
     foreach ($cp in $ProfileMap.Keys) {
         SubBanner "Resolving: $cp"
@@ -196,14 +196,14 @@ if ($ResumeFromState -and (Test-Path $ResumeFromState)) {
                 $cdnObj = Get-AzCdnProfile -ResourceGroupName $cdnRes.ResourceGroupName -Name $cp -ErrorAction SilentlyContinue
                 $cdnSku = if ($cdnObj) { $cdnObj.SkuName } else { "" }
                 if ($cdnSku -like "Standard_AzureFrontDoor*" -or $cdnSku -like "Premium_AzureFrontDoor*") {
-                    Log "  Skipping '$cp' — already AFD Standard/Premium tier ($cdnSku)" "WARN"
+                    Log "  Skipping '$cp' -- already AFD Standard/Premium tier ($cdnSku)" "WARN"
                     continue
                 }
                 $found = [PSCustomObject]@{ Type="CDN"; Sub=$s.Id; SubName=$s.Name; Rg=$cdnRes.ResourceGroupName; Id=$cdnRes.ResourceId; CdnSku=$cdnSku }
                 break
             }
         }
-        if (-not $found) { Log "Profile '$cp' NOT FOUND in any subscription — SKIP" "WARN"; continue }
+        if (-not $found) { Log "Profile '$cp' NOT FOUND in any subscription -- SKIP" "WARN"; continue }
         Log "$($found.Type) found: sub=$($found.SubName) rg=$($found.Rg)$(if ($found.CdnSku) { " sku=$($found.CdnSku)" })" "OK"
 
         Set-AzContext -SubscriptionId $found.Sub -TenantId $ctx.Tenant.Id -ErrorAction SilentlyContinue | Out-Null
@@ -223,7 +223,7 @@ if ($ResumeFromState -and (Test-Path $ResumeFromState)) {
             }
             $isBYOC = Test-IsBYOC -AfdProfile $afdProfile
             $kvIds  = Get-KvIdsFromAfdProfile -AfdProfile $afdProfile
-            if ($isBYOC) { Log "BYOC detected — $($kvIds.Count) Key Vault reference(s)" "WARN" }
+            if ($isBYOC) { Log "BYOC detected -- $($kvIds.Count) Key Vault reference(s)" "WARN" }
         } else {
             $cdnEndpoints = Get-AzCdnEndpoint -ResourceGroupName $found.Rg -ProfileName $cp -ErrorAction SilentlyContinue
             foreach ($ep in $cdnEndpoints) {
@@ -278,7 +278,7 @@ if ($ResumeFromState -and (Test-Path $ResumeFromState)) {
         $targetExists = $false
         try { $existing = Get-AzFrontDoorCdnProfile -ResourceGroupName $found.Rg -ProfileName $targetStd -ErrorAction Stop; $targetExists = [bool]$existing } catch { $targetExists = $false }
         if ($targetExists) {
-            Log "Target profile '$targetStd' already exists in $($found.Rg) — will be reused" "WARN"
+            Log "Target profile '$targetStd' already exists in $($found.Rg) -- will be reused" "WARN"
         }
 
         $snapshotFile = Join-Path $snapshotDir "$cp-classic-snapshot.json"
@@ -313,27 +313,27 @@ if ($ResumeFromState -and (Test-Path $ResumeFromState)) {
 
 if ($plan.Count -eq 0) { Log "No profiles to migrate. Exiting." "ERR"; exit 1 }
 
-Banner "Phase 2 — Plan summary"
+Banner "Phase 2 -- Plan summary"
 foreach ($p in $plan) {
     $byocFlag = if ($p.IsBYOC) { " BYOC" } else { "" }
-    Log "  $($p.Classic) ($($p.MigrationType)) -> $($p.Standard) [$($p.ResolvedTier)] in $($p.SubscriptionName)/$($p.ResourceGroup) — WAFs: $($p.WafPolicies.Count) (managed: $($p.HasManagedRules))$byocFlag"
+    Log "  $($p.Classic) ($($p.MigrationType)) -> $($p.Standard) [$($p.ResolvedTier)] in $($p.SubscriptionName)/$($p.ResourceGroup) -- WAFs: $($p.WafPolicies.Count) (managed: $($p.HasManagedRules))$byocFlag"
 }
 Save-State -Plan $plan -Results $results
 
-if ($DiscoveryOnly) { Log "DiscoveryOnly mode — stopping after plan generation" "WARN"; exit 0 }
+if ($DiscoveryOnly) { Log "DiscoveryOnly mode -- stopping after plan generation" "WARN"; exit 0 }
 
 if (-not $NoConfirm -and -not $DryRun) {
     $resp = Read-Host "Type YES to migrate $($plan.Count) profile(s)"
     if ($resp -ne "YES") { Log "Aborted by operator" "WARN"; exit 0 }
 }
-if ($DryRun) { Log "DryRun mode — read-only validation, no migration calls will be made" "WARN" }
+if ($DryRun) { Log "DryRun mode -- read-only validation, no migration calls will be made" "WARN" }
 
-Banner "Phase 3 — Per-profile migration"
+Banner "Phase 3 -- Per-profile migration"
 
 foreach ($p in $plan) {
     $existing = $results | Where-Object { $_.Classic -eq $p.Classic } | Select-Object -First 1
     if ($existing -and $existing.Status -in @("migrated-and-committed","rolled-back","skipped")) {
-        Log "Profile $($p.Classic) already in terminal state ($($existing.Status)) — skip" "WARN"
+        Log "Profile $($p.Classic) already in terminal state ($($existing.Status)) -- skip" "WARN"
         continue
     }
 
@@ -368,7 +368,7 @@ foreach ($p in $plan) {
     Set-AzContext -SubscriptionId $p.SubscriptionId -TenantId $ctx.Tenant.Id -ErrorAction SilentlyContinue | Out-Null
 
     if ($DryRun) {
-        Log "DryRun — read-only validation only ($($p.MigrationType))"
+        Log "DryRun -- read-only validation only ($($p.MigrationType))"
         if ($p.MigrationType -eq "AFD") {
             try {
                 $dryTest = Test-AzFrontDoorCdnProfileMigration -ResourceGroupName $p.ResourceGroup -ClassicResourceReferenceId $p.ClassicResourceId -ErrorAction Stop
@@ -376,15 +376,15 @@ foreach ($p in $plan) {
                 $defS = if ($dryTest -and $dryTest.DefaultSku) { $dryTest.DefaultSku } else { "" }
                 $r.TestResult = "CanMigrate=$canM DefaultSku=$defS"
                 if ($canM) {
-                    Log "  PASS — CanMigrate=True DefaultSku=$defS WAFs=$($p.WafPolicies.Count) BYOC=$($p.IsBYOC)" "OK"
+                    Log "  PASS -- CanMigrate=True DefaultSku=$defS WAFs=$($p.WafPolicies.Count) BYOC=$($p.IsBYOC)" "OK"
                     $r.Status = "dryrun-passed"
                 } else {
-                    Log "  FAIL — CanMigrate=False ($defS)" "ERR"
+                    Log "  FAIL -- CanMigrate=False ($defS)" "ERR"
                     $r.Status = "dryrun-failed"
                     $r.Error = "Test cmdlet returned CanMigrate=False"
                 }
             } catch {
-                Log "  FAIL — Test cmdlet error: $($_.Exception.Message)" "ERR"
+                Log "  FAIL -- Test cmdlet error: $($_.Exception.Message)" "ERR"
                 $r.Status = "dryrun-failed"
                 $r.Error = $_.Exception.Message
             }
@@ -394,15 +394,15 @@ foreach ($p in $plan) {
                 $isMigratable = $cdnProfile.SkuName -in @("Standard_Microsoft","Standard_Verizon","Premium_Verizon","Standard_Akamai","Standard_ChinaCdn")
                 $r.TestResult = "Sku=$($cdnProfile.SkuName) Migratable=$isMigratable Endpoints=$($p.CdnEndpoints.Count)"
                 if ($isMigratable) {
-                    Log "  PASS — CDN classic SKU $($cdnProfile.SkuName) migratable, $($p.CdnEndpoints.Count) endpoint(s)" "OK"
+                    Log "  PASS -- CDN classic SKU $($cdnProfile.SkuName) migratable, $($p.CdnEndpoints.Count) endpoint(s)" "OK"
                     $r.Status = "dryrun-passed"
                 } else {
-                    Log "  FAIL — SKU $($cdnProfile.SkuName) not eligible for AFD migration" "ERR"
+                    Log "  FAIL -- SKU $($cdnProfile.SkuName) not eligible for AFD migration" "ERR"
                     $r.Status = "dryrun-failed"
                     $r.Error = "Non-migratable CDN SKU: $($cdnProfile.SkuName)"
                 }
             } catch {
-                Log "  FAIL — CDN profile fetch error: $($_.Exception.Message)" "ERR"
+                Log "  FAIL -- CDN profile fetch error: $($_.Exception.Message)" "ERR"
                 $r.Status = "dryrun-failed"
                 $r.Error = $_.Exception.Message
             }
@@ -416,7 +416,7 @@ foreach ($p in $plan) {
     $skuToUse = $p.ResolvedTier
 
     if ($p.MigrationType -eq "AFD") {
-        Log "Step 1 — Test-AzFrontDoorCdnProfileMigration"
+        Log "Step 1 -- Test-AzFrontDoorCdnProfileMigration"
         try {
             $testResult = Invoke-WithRetry -Description "Test-AzFrontDoorCdnProfileMigration" -Code {
                 Test-AzFrontDoorCdnProfileMigration -ResourceGroupName $p.ResourceGroup -ClassicResourceReferenceId $p.ClassicResourceId -ErrorAction Stop
@@ -431,7 +431,7 @@ foreach ($p in $plan) {
         Log "Test result: $($r.TestResult)" "OK"
 
         if (-not $canMigrate) {
-            Log "Profile NOT compatible — SKIP" "ERR"
+            Log "Profile NOT compatible -- SKIP" "ERR"
             $r.Status = "test-incompatible"; $r.Error = "Test returned CanMigrate=False (DefaultSku: $defaultSku)"
             $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
             $results += $r; Save-State -Plan $plan -Results $results; continue
@@ -447,14 +447,14 @@ foreach ($p in $plan) {
 
         $wafMappings = @()
         if ($p.WafPolicies.Count -gt 0) {
-            Log "Step 2 — Pre-creating new $skuToUse-tier WAF policies"
+            Log "Step 2 -- Pre-creating new $skuToUse-tier WAF policies"
             foreach ($w in $p.WafPolicies) {
                 try {
                     $suffix = if ($skuToUse -like "Premium*") { "Prem" } else { "Std" }
                     $newWafName = "$($w.Name)$suffix"
                     $existingNew = Get-AzFrontDoorWafPolicy -ResourceGroupName $p.ResourceGroup -Name $newWafName -ErrorAction SilentlyContinue
                     if ($existingNew -and $existingNew.Sku -ne $skuToUse) {
-                        Log "  WAF '$newWafName' wrong SKU ($($existingNew.Sku) vs $skuToUse) — recreate" "WARN"
+                        Log "  WAF '$newWafName' wrong SKU ($($existingNew.Sku) vs $skuToUse) -- recreate" "WARN"
                         Remove-AzFrontDoorWafPolicy -ResourceGroupName $p.ResourceGroup -Name $newWafName -ErrorAction SilentlyContinue | Out-Null
                         $existingNew = $null
                     }
@@ -478,7 +478,7 @@ foreach ($p in $plan) {
         }
         $r.WafMappingsCount = $wafMappings.Count
 
-        Log "Step 3 — Start-AzFrontDoorCdnProfilePrepareMigration with $skuToUse$(if ($p.IsBYOC) { ' (BYOC + SystemAssigned identity)' })"
+        Log "Step 3 -- Start-AzFrontDoorCdnProfilePrepareMigration with $skuToUse$(if ($p.IsBYOC) { ' (BYOC + SystemAssigned identity)' })"
         try {
             $prepParams = @{
                 ResourceGroupName          = $p.ResourceGroup
@@ -492,13 +492,13 @@ foreach ($p in $plan) {
             Invoke-WithRetry -Description "Start-AzFrontDoorCdnProfilePrepareMigration" -Code {
                 Start-AzFrontDoorCdnProfilePrepareMigration @prepParams
             } | Out-Null
-            Log "Prepare migration succeeded — Classic still serving traffic" "OK"
+            Log "Prepare migration succeeded -- Classic still serving traffic" "OK"
         } catch {
             $r.Status = "prepare-failed"; $r.Error = $_.Exception.Message; $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
             $results += $r; Save-State -Plan $plan -Results $results; continue
         }
     } else {
-        Log "Step 1 — Move-AzCdnProfileToAFD (CDN classic prepare) with $skuToUse$(if ($p.IsBYOC) { ' (BYOC + SystemAssigned identity)' })"
+        Log "Step 1 -- Move-AzCdnProfileToAFD (CDN classic prepare) with $skuToUse$(if ($p.IsBYOC) { ' (BYOC + SystemAssigned identity)' })"
         $epMappings = @()
         foreach ($epName in $p.CdnEndpoints) {
             try {
@@ -525,7 +525,7 @@ foreach ($p in $plan) {
             Invoke-WithRetry -Description "Move-AzCdnProfileToAFD" -Code {
                 Move-AzCdnProfileToAFD @moveParams
             } | Out-Null
-            Log "CDN prepare migration succeeded — Classic still serving traffic" "OK"
+            Log "CDN prepare migration succeeded -- Classic still serving traffic" "OK"
         } catch {
             $r.Status = "prepare-failed"; $r.Error = $_.Exception.Message; $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
             $results += $r; Save-State -Plan $plan -Results $results; continue
@@ -544,12 +544,12 @@ foreach ($p in $plan) {
     } catch {}
 
     if ($p.IsBYOC -and -not $SkipKeyVaultGrant -and $p.KeyVaultIds.Count -gt 0) {
-        Log "Step KV — Granting new profile managed identity access to Key Vault(s)"
+        Log "Step KV -- Granting new profile managed identity access to Key Vault(s)"
         try {
             $newProfile = Get-AzFrontDoorCdnProfile -ResourceGroupName $p.ResourceGroup -ProfileName $newProfileName -ErrorAction Stop
             $miPrincipalId = $newProfile.IdentityPrincipalId
             if (-not $miPrincipalId) {
-                Log "  Managed identity principal ID not yet available — skipping KV grant (run Grant phase manually)" "WARN"
+                Log "  Managed identity principal ID not yet available -- skipping KV grant (run Grant phase manually)" "WARN"
             } else {
                 Log "  Profile managed identity: $miPrincipalId"
                 foreach ($kvId in $p.KeyVaultIds) {
@@ -588,16 +588,16 @@ foreach ($p in $plan) {
             $decision = (Read-Host "Decision for $($p.Classic) [COMMIT/ROLLBACK/SKIP]").Trim().ToUpper()
         }
     } else {
-        Log "AutoCommit enabled — committing" "WARN"
+        Log "AutoCommit enabled -- committing" "WARN"
     }
     $r.Decision = $decision
 
     if ($decision -eq "ROLLBACK") {
-        Log "Step ROLLBACK — Stop-AzFrontDoorCdnProfileMigration"
+        Log "Step ROLLBACK -- Stop-AzFrontDoorCdnProfileMigration"
         try {
             Stop-AzFrontDoorCdnProfileMigration -ProfileName $newProfileName -ResourceGroupName $p.ResourceGroup -ErrorAction Stop
             $r.Status = "rolled-back"
-            Log "Migration aborted — Classic remains active" "OK"
+            Log "Migration aborted -- Classic remains active" "OK"
         } catch {
             $r.Status = "rollback-failed"; $r.Error = $_.Exception.Message
             Log "Rollback FAILED: $($_.Exception.Message)" "ERR"
@@ -611,12 +611,12 @@ foreach ($p in $plan) {
         $results += $r; Save-State -Plan $plan -Results $results; continue
     }
 
-    Log "Step COMMIT — Enable-AzFrontDoorCdnProfileMigration (retires Classic)"
+    Log "Step COMMIT -- Enable-AzFrontDoorCdnProfileMigration (retires Classic)"
     try {
         Invoke-WithRetry -Description "Enable-AzFrontDoorCdnProfileMigration" -Code {
             Enable-AzFrontDoorCdnProfileMigration -ProfileName $newProfileName -ResourceGroupName $p.ResourceGroup -ErrorAction Stop
         } | Out-Null
-        Log "Commit succeeded — traffic now on new Standard/Premium profile" "OK"
+        Log "Commit succeeded -- traffic now on new Standard/Premium profile" "OK"
     } catch {
         $r.Status = "enable-failed"; $r.Error = $_.Exception.Message; $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
         $results += $r; Save-State -Plan $plan -Results $results; continue
@@ -643,7 +643,7 @@ foreach ($p in $plan) {
                 AzRef = if ($azref) { $azref.Substring(0, [Math]::Min(40, $azref.Length)) } else { "" }
                 Healthy = $tickOk
             }
-            $msg = "watchdog tick $tick — $($r.TestFqdn) -> $code"
+            $msg = "watchdog tick $tick -- $($r.TestFqdn) -> $code"
             if ($tickOk) { Log $msg "OK" } else { Log $msg "WARN" }
             if ((Get-Date) -ge $deadline) { break }
             Start-Sleep -Seconds $WatchdogIntervalSec
@@ -676,7 +676,7 @@ foreach ($p in $plan) {
     Save-State -Plan $plan -Results $results
 }
 
-Banner "Phase 4 — Reports"
+Banner "Phase 4 -- Reports"
 
 $migrated   = @($results | Where-Object { $_.Status -eq "migrated-and-committed" })
 $rolled     = @($results | Where-Object { $_.Status -in @("rolled-back","rollback-failed") })
@@ -692,7 +692,7 @@ if ($DryRun) {
     foreach ($r in $results) {
         $tag = if ($r.Status -eq "dryrun-passed") { "PASS" } else { "FAIL" }
         $level = if ($r.Status -eq "dryrun-passed") { "OK" } else { "ERR" }
-        Log "  [$tag] $($r.Classic) ($($r.MigrationType)) -> $($r.Standard) — $($r.TestResult)" $level
+        Log "  [$tag] $($r.Classic) ($($r.MigrationType)) -> $($r.Standard) -- $($r.TestResult)" $level
     }
 }
 
@@ -706,10 +706,10 @@ foreach ($r in $migrated) {
         $dnsRows += "<tr><td><b>$($d.Hostname)</b></td><td>$($d.ValidationState)</td><td>$txtPart</td><td><code>$hostShort</code> CNAME <code>$($d.CnameTarget)</code></td><td>$($r.SubscriptionName) / $($r.ResourceGroup)</td></tr>"
     }
 }
-$dnsRowsJoined = if ($dnsRows.Count -gt 0) { $dnsRows -join "`n" } else { "<tr><td colspan='5'><i>No DNS records pending — all migrations complete or none committed.</i></td></tr>" }
+$dnsRowsJoined = if ($dnsRows.Count -gt 0) { $dnsRows -join "`n" } else { "<tr><td colspan='5'><i>No DNS records pending -- all migrations complete or none committed.</i></td></tr>" }
 
 $dnsHtml = @"
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>PYX Front Door — DNS handoff</title>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>PYX Front Door -- DNS handoff</title>
 <style>body{font-family:'Segoe UI',Arial,sans-serif;max-width:1200px;margin:30px auto;padding:0 24px;color:#11151C;line-height:1.55}
 h1{color:#1F3D7A;border-bottom:3px solid #1F3D7A;padding-bottom:10px;font-size:24px}
 h2{color:#1F3D7A;font-size:17px;margin-top:24px}
@@ -720,7 +720,7 @@ code{font-family:Consolas,monospace;font-size:12px;background:#F5F7FA;padding:2p
 .note{background:#FFF8E1;border-left:4px solid #B7791F;padding:12px 16px;margin:14px 0;font-size:13px}
 .foot{margin-top:36px;padding-top:12px;border-top:1px solid #C8CFD9;color:#555E6D;font-size:12px;text-align:center}
 </style></head><body>
-<h1>PYX Front Door — DNS records to publish</h1>
+<h1>PYX Front Door -- DNS records to publish</h1>
 <p>$($migrated.Count) profile(s) committed. Publish the records below in DNS in this order per domain.</p>
 <div class='note'><b>Order of operations per domain:</b>
 <ol><li>Publish TXT record (validates the AFD-managed certificate)</li>
@@ -817,7 +817,7 @@ foreach ($r in $results) {
 $cardsJoined = if ($changeCards.Count -gt 0) { $changeCards -join "`n" } else { "<p><i>No profiles processed.</i></p>" }
 
 $changeReportHtml = @"
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>PYX Front Door migration — change report</title>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>PYX Front Door migration -- change report</title>
 <style>body{font-family:'Segoe UI',Arial,sans-serif;max-width:1200px;margin:30px auto;padding:0 24px;color:#11151C;line-height:1.55}
 h1{color:#1F3D7A;border-bottom:3px solid #1F3D7A;padding-bottom:10px;font-size:26px}
 h2{color:#1F3D7A;font-size:18px;margin-top:18px}
@@ -833,7 +833,7 @@ code{font-family:Consolas,monospace;font-size:12px;background:#F5F7FA;padding:2p
 .foot{margin-top:36px;padding-top:12px;border-top:1px solid #C8CFD9;color:#555E6D;font-size:12px;text-align:center}
 .bigcount{font-size:24px;font-weight:600}
 </style></head><body>
-<h1>PYX Front Door migration — change report</h1>
+<h1>PYX Front Door migration -- change report</h1>
 <div class='summary'>
 <table class='kv'>
 <tr><td>Started</td><td>$($startTime.ToString("yyyy-MM-dd HH:mm:ss"))</td></tr>
@@ -855,7 +855,7 @@ $cardsJoined
 Set-Content -Path $changePath -Value $changeReportHtml -Encoding UTF8
 
 $summaryHtml = @"
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>PYX Front Door migration — summary</title>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>PYX Front Door migration -- summary</title>
 <style>body{font-family:'Segoe UI',Arial,sans-serif;max-width:1200px;margin:30px auto;padding:0 24px;color:#11151C}
 h1{color:#1F3D7A;border-bottom:3px solid #1F3D7A;padding-bottom:10px;font-size:24px}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -864,7 +864,7 @@ td{padding:10px;border-bottom:1px solid #E5E8EE}
 code{font-family:Consolas,monospace;font-size:12px;background:#F5F7FA;padding:2px 6px;border-radius:3px}
 .foot{margin-top:30px;padding-top:12px;border-top:1px solid #C8CFD9;color:#555E6D;font-size:12px;text-align:center}
 </style></head><body>
-<h1>PYX Front Door migration — summary</h1>
+<h1>PYX Front Door migration -- summary</h1>
 <p>Migrated: $($migrated.Count) &middot; Rolled back: $($rolled.Count) &middot; Pending commit: $($pending.Count) &middot; Failed: $($failed.Count)</p>
 <table><thead><tr><th>Classic</th><th>Type</th><th>Tier</th><th>Sub</th><th>RG</th><th>New profile</th><th>Status</th><th>Error</th></tr></thead>
 <tbody>$summaryRows</tbody></table>
