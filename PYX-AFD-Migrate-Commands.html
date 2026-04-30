@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PYX AFD Migration - Commands</title>
+<style>
+  @page { size: letter; margin: 0.5in; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 24px auto; padding: 0 28px; color: #11151C; line-height: 1.55; }
+  h1 { color: #1F3D7A; border-bottom: 3px solid #1F3D7A; padding-bottom: 10px; font-size: 24px; margin-bottom: 6px; }
+  h2 { color: #1F3D7A; font-size: 17px; margin-top: 24px; padding-bottom: 6px; border-bottom: 1px solid #C8CFD9; }
+  h3 { color: #1F3D7A; font-size: 14px; margin-top: 18px; }
+  p, li { font-size: 13px; }
+  pre { background: #11151C; color: #E8ECF1; padding: 14px 18px; border-radius: 4px; overflow-x: auto; font-family: Consolas, 'Courier New', monospace; font-size: 12.5px; margin: 10px 0; line-height: 1.4; white-space: pre; }
+  code { font-family: Consolas, 'Courier New', monospace; font-size: 12px; background: #F5F7FA; padding: 2px 6px; border-radius: 3px; color: #1F3D7A; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th { background: #F5F7FA; padding: 9px 12px; text-align: left; border-bottom: 2px solid #1F3D7A; color: #1F3D7A; font-weight: 600; }
+  td { padding: 9px 12px; border-bottom: 1px solid #E5E8EE; vertical-align: top; }
+  .step { background: #FFFFFF; border: 1px solid #C8CFD9; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
+  .summary { background: #F5F7FA; border-left: 4px solid #1F3D7A; padding: 14px 18px; margin: 14px 0; font-size: 13px; }
+  .warn { background: #FFF8E1; border-left: 4px solid #B7791F; padding: 12px 16px; margin: 12px 0; font-size: 13px; }
+  .green { color: #1B6B3A; font-weight: 600; }
+  .amber { color: #B7791F; font-weight: 600; }
+  .red { color: #9B2226; font-weight: 600; }
+  .foot { margin-top: 36px; padding-top: 12px; border-top: 1px solid #C8CFD9; color: #555E6D; font-size: 11px; text-align: center; }
+  ul, ol { margin: 6px 0 10px 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+
+<h1>PYX Front Door migration - copy/paste commands</h1>
+<p style="color:#555E6D;font-size:12px;margin-top:4px;">Script: <code>PYX-AFD-Migrate-v2.ps1</code> &middot; Goal: migrate all 5 PYX Classic profiles (4 AFD + 1 CDN) to Standard tier with WAF detach + per-profile rollback gate</p>
+
+<div class="summary">
+<b>Profiles in scope</b> (default <code>ProfileMap</code> + <code>PreferredTier=Standard</code> for all 5):
+<table>
+<thead><tr><th>Classic</th><th>Type</th><th>Target name</th><th>Tier preference</th></tr></thead>
+<tbody>
+<tr><td><code>hipyx</code></td><td>AFD</td><td><code>hipyx-std-v2</code></td><td>Standard</td></tr>
+<tr><td><code>pyxiq</code></td><td>AFD</td><td><code>pyxiq-std</code></td><td>Standard</td></tr>
+<tr><td><code>pyxiq-stage</code></td><td>AFD</td><td><code>pyxiq-stage-std</code></td><td>Standard</td></tr>
+<tr><td><code>pyxpwa-stage</code></td><td>AFD</td><td><code>pyxpwa-stage-std</code></td><td>Standard</td></tr>
+<tr><td><code>standard</code></td><td>CDN (Standard_Microsoft)</td><td><code>standard-afdstd</code></td><td>Standard</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Step 1 - Open PowerShell on PYX laptop</h2>
+<p>Open Windows Terminal or PowerShell. Navigate to folder containing <code>PYX-AFD-Migrate-v2.ps1</code>:</p>
+<pre>cd C:\Users\SyedRizvi\Downloads\pyx-fx-migration-bundle-2026-04-28</pre>
+
+<h2>Step 2 - Discovery only (resolve all 5 profiles, no API mutations)</h2>
+<pre>.\PYX-AFD-Migrate-v2.ps1 -DiscoveryOnly</pre>
+<p class="green">Expected: All 5 profiles resolved with sub/RG. Plan summary printed. Exit clean.</p>
+
+<h2>Step 3 - Dry run with Standard-force preview (read-only)</h2>
+<pre>.\PYX-AFD-Migrate-v2.ps1 -DryRun -NoConfirm -StripManagedRulesToForceStandard</pre>
+
+<p>What you'll see per profile (example):</p>
+<pre>[OK] PASS -- hipyx (AFD) -&gt; hipyx-std-v2 -- CanMigrate=True DefaultSku=Premium_AzureFrontDoor
+     | preferred=Standard, MS=Premium, action=WILL UNLINK 1 WAF(s) -&gt; migrate Standard
+
+[OK] PASS -- standard (CDN) -&gt; standard-afdstd -- Sku=Standard_Microsoft Migratable=True Endpoints=4
+
+DryRun results
+Profiles tested: 5
+PASS:            5
+FAIL:            0</pre>
+
+<p class="green">If you see PASS=5, FAIL=0: ready for the real run.</p>
+<p class="red">If any FAIL: paste the error to me before proceeding.</p>
+
+<h2>Step 4 - REAL migration with WAF detach + per-profile rollback gate (10 PM window)</h2>
+
+<div class="warn">
+<b>What will happen per AFD profile (4 of them):</b>
+<ol>
+<li>Backup Classic WAF policy JSON to <code>~\Desktop\pyx-frontdoor-migration\snapshots-*\waf-pre-unlink-*.json</code></li>
+<li>Detach WAF from each FrontendEndpoint of the Classic profile (<code>Set-AzFrontDoor</code> with cleared link)</li>
+<li>Re-call <code>Test-AzFrontDoorCdnProfileMigration</code> - now returns <code>DefaultSku=Standard_AzureFrontDoor</code></li>
+<li>Pre-create new Standard-tier WAF policies (no managed rules)</li>
+<li>Run <code>Start-AzFrontDoorCdnProfilePrepareMigration</code> with SkuName=Standard</li>
+<li>Pause for operator decision: <b>COMMIT / ROLLBACK / SKIP</b></li>
+<li>If COMMIT: <code>Enable-AzFrontDoorCdnProfileMigration</code> flips traffic to Standard, retires Classic. Watchdog runs 5 min HEAD probes.</li>
+<li>If ROLLBACK: <code>Stop-AzFrontDoorCdnProfileMigration</code> deletes the new Standard profile. Classic remains active and unchanged.</li>
+</ol>
+
+For the CDN <code>standard</code> profile (5th): no WAF involved, migrates straight to Standard via <code>Move-AzCdnProfileToAFD</code>, then same COMMIT/ROLLBACK gate.
+</div>
+
+<h3>Interactive (recommended for first run - per-profile gate, you control each one)</h3>
+<pre>.\PYX-AFD-Migrate-v2.ps1 -StripManagedRulesToForceStandard</pre>
+<p>You'll get prompted to type <code>YES</code> first, then per profile prompted to type <code>COMMIT</code>, <code>ROLLBACK</code>, or <code>SKIP</code>.</p>
+
+<h3>Unattended (only if you want all 5 to commit in sequence with no prompts)</h3>
+<pre>.\PYX-AFD-Migrate-v2.ps1 -StripManagedRulesToForceStandard -AutoCommit -NoConfirm</pre>
+
+<h2>Step 5 - Reports drop here after run</h2>
+<pre>C:\Users\SyedRizvi\Desktop\pyx-frontdoor-migration\</pre>
+<table>
+<thead><tr><th>File</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>change-report-*.html</code></td><td>Migration summary for leadership review</td></tr>
+<tr><td><code>dns-handoff-*.html</code></td><td>CNAME + TXT records for DNS owner (Maryfin)</td></tr>
+<tr><td><code>summary-*.html</code></td><td>Operations summary table</td></tr>
+<tr><td><code>state-*.json</code></td><td>State checkpoint - use with <code>-ResumeFromState</code> to restart from failure</td></tr>
+<tr><td><code>snapshots-*\</code></td><td>Pre-migration Classic profile + WAF JSON backups</td></tr>
+<tr><td><code>migration-*.log</code></td><td>Full timestamped run log</td></tr>
+</tbody>
+</table>
+
+<h2>If something fails mid-run</h2>
+<p>Resume from last successful checkpoint:</p>
+<pre>.\PYX-AFD-Migrate-v2.ps1 -StripManagedRulesToForceStandard -ResumeFromState "C:\Users\SyedRizvi\Desktop\pyx-frontdoor-migration\state-XXXXXXXX-XXXXXX.json"</pre>
+
+<p>Manually re-attach a WAF after rollback (if needed):</p>
+<pre># Read the backup
+$waf = Get-Content "C:\Users\SyedRizvi\Desktop\pyx-frontdoor-migration\snapshots-XXX\waf-pre-unlink-WAFNAME.json" | ConvertFrom-Json
+# Re-link via portal: Front Door -> Frontend hosts -> select FE -> WAF policy -> select WAFNAME</pre>
+
+<h2>Manual rollback (worst case - if Commit succeeded but you need to revert)</h2>
+<p class="red">Once Commit fires, Classic is gone. Recovery requires re-creating a Standard profile from the Classic snapshot JSON in <code>snapshots-*\</code>. Do NOT commit if uncertain.</p>
+
+<h2>WAF re-attach post-migration</h2>
+<p>After successful Standard migration, attach a fresh Standard-tier WAF via Azure Portal:</p>
+<ol>
+<li>Open the new Standard profile (e.g. <code>hipyx-std-v2</code>) in Azure Portal</li>
+<li>Settings -&gt; Security policies -&gt; Add</li>
+<li>Create new WAF policy (Standard SKU) with the custom rules copied from the backup JSON</li>
+<li>Associate with the route</li>
+</ol>
+
+<div class="foot">Prepared by Syed Rizvi</div>
+
+</body>
+</html>
