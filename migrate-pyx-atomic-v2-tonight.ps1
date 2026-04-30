@@ -7,6 +7,7 @@ param(
         "hipyx"        = "hipyx-std-v2"
         "pyxiq-stage"  = "pyxiq-stage-std"
         "pyxpwa-stage" = "pyxpwa-stage-std"
+        "standard"     = "standard-afdstd"
     },
     [string[]]$VerifyAlsoStandard = @(),
     [string]$Sku                 = "Standard_AzureFrontDoor",
@@ -36,7 +37,9 @@ if (-not (Test-Path $snapshotDir)) { New-Item -ItemType Directory -Path $snapsho
 $logPath     = Join-Path $ReportDir "atomic-migrate-$timestamp.log"
 $dnsHtmlPath = Join-Path $ReportDir "dns-handoff-all-$timestamp.html"
 $summaryPath = Join-Path $ReportDir "summary-$timestamp.html"
+$changePath  = Join-Path $ReportDir "change-report-$timestamp.html"
 $statePath   = Join-Path $ReportDir "state-$timestamp.json"
+$startTime   = Get-Date
 
 function Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -97,7 +100,7 @@ if ($OnlyProfiles.Count -gt 0) {
     $ProfileMap = $filtered
 }
 
-Banner "PYX atomic Front Door migration  -  Classic to Standard  -  with rollback gate"
+Banner "PYX atomic migration  -  AFD Classic + CDN Classic  ->  AFD Standard  -  with rollback gate"
 Log "Subscription:           $SubscriptionId"
 Log "Resource group:         $ResourceGroup"
 Log "Profiles in scope:      $($ProfileMap.Keys -join ', ')"
@@ -143,22 +146,61 @@ Banner "Phase 1 - Discovery"
 $plan = @()
 foreach ($cp in $ProfileMap.Keys) {
     SubBanner "Discovering Classic profile: $cp"
+
     $classicId = az network front-door show -g $ResourceGroup --name $cp --query id -o tsv 2>$null
+    $migrationType = "AFD"
+    $cdnSku = ""
+
     if (-not $classicId) {
-        Log "Profile '$cp' NOT FOUND in $ResourceGroup - SKIP" "WARN"
+        $cdnId = az cdn profile show -g $ResourceGroup --name $cp --query id -o tsv 2>$null
+        if ($cdnId) {
+            $classicId = $cdnId
+            $migrationType = "CDN"
+            $cdnSku = az cdn profile show -g $ResourceGroup --name $cp --query "sku.name" -o tsv 2>$null
+        }
+    }
+
+    if (-not $classicId) {
+        Log "Profile '$cp' NOT FOUND as AFD or CDN profile in $ResourceGroup - SKIP" "WARN"
         continue
     }
     Log "Classic resource ID: $classicId" "OK"
+    if ($migrationType -eq "CDN") {
+        Log "Migration type:      $migrationType (CDN SKU: $cdnSku)  -  portal-driven migrate" "OK"
+    } else {
+        Log "Migration type:      $migrationType  -  az afd profile migrate" "OK"
+    }
 
-    $feText = az network front-door frontend-endpoint list -g $ResourceGroup --front-door-name $cp --query "[].[name, hostName, customHttpsProvisioningState]" -o tsv 2>$null
     $customFEs = @()
-    foreach ($line in @($feText -split "`r?`n" | Where-Object { $_ })) {
-        $cols = $line -split "`t"
-        if ($cols.Count -ge 2 -and $cols[1] -and $cols[1] -notlike "*.azurefd.net") {
-            $customFEs += [PSCustomObject]@{
-                Name      = $cols[0]
-                HostName  = $cols[1]
-                CertState = if ($cols.Count -ge 3) { $cols[2] } else { "" }
+    if ($migrationType -eq "AFD") {
+        $feText = az network front-door frontend-endpoint list -g $ResourceGroup --front-door-name $cp --query "[].[name, hostName, customHttpsProvisioningState]" -o tsv 2>$null
+        foreach ($line in @($feText -split "`r?`n" | Where-Object { $_ })) {
+            $cols = $line -split "`t"
+            if ($cols.Count -ge 2 -and $cols[1] -and $cols[1] -notlike "*.azurefd.net") {
+                $customFEs += [PSCustomObject]@{
+                    Name      = $cols[0]
+                    HostName  = $cols[1]
+                    CertState = if ($cols.Count -ge 3) { $cols[2] } else { "" }
+                    Endpoint  = ""
+                }
+            }
+        }
+    } else {
+        $cdnEpText = az cdn endpoint list -g $ResourceGroup --profile-name $cp --query "[].name" -o tsv 2>$null
+        $cdnEps = @($cdnEpText -split "`r?`n" | Where-Object { $_ })
+        Log "  $($cdnEps.Count) CDN endpoint(s) on $cp"
+        foreach ($ep in $cdnEps) {
+            $cdText = az cdn custom-domain list -g $ResourceGroup --profile-name $cp --endpoint-name $ep --query "[].[name, hostName, customHttpsProvisioningState]" -o tsv 2>$null
+            foreach ($line in @($cdText -split "`r?`n" | Where-Object { $_ })) {
+                $cols = $line -split "`t"
+                if ($cols.Count -ge 2 -and $cols[1] -and $cols[1] -notlike "*.azureedge.net") {
+                    $customFEs += [PSCustomObject]@{
+                        Name      = $cols[0]
+                        HostName  = $cols[1]
+                        CertState = if ($cols.Count -ge 3) { $cols[2] } else { "" }
+                        Endpoint  = $ep
+                    }
+                }
             }
         }
     }
@@ -173,12 +215,14 @@ foreach ($cp in $ProfileMap.Keys) {
         if (-not $targetState) { $targetState = "<not from migration>" }
         Log "Target Standard '$targetStd' already exists (state: $targetState)" "WARN"
     } else {
-        Log "Target Standard '$targetStd' available - will be created by migrate" "OK"
+        Log "Target Standard '$targetStd' available - will be created by migration" "OK"
     }
 
     $plan += [PSCustomObject]@{
         Classic           = $cp
         ClassicResourceId = $classicId
+        MigrationType     = $migrationType
+        CdnSku            = $cdnSku
         Standard          = $targetStd
         StandardExists    = [bool]$targetExists
         StandardState     = $targetState
@@ -191,28 +235,40 @@ if ($plan.Count -eq 0) { Log "No profiles to migrate. Exiting." "ERR"; exit 1 }
 Banner "Phase 1.5 - Pre-migrate snapshot (rollback dossier)"
 foreach ($p in $plan) {
     $snapPath = Join-Path $snapshotDir "$($p.Classic)-classic-snapshot.json"
-    Log "Snapshotting Classic '$($p.Classic)' to $snapPath"
-    az network front-door show -g $ResourceGroup --name $p.Classic -o json 2>$null | Set-Content -Path $snapPath -Encoding ASCII
-    $waf = az network front-door waf-policy list -g $ResourceGroup --query "[?contains(frontendEndpointLinks[].id, '$($p.Classic)')]" -o json 2>$null
-    if ($waf) {
-        $wafPath = Join-Path $snapshotDir "$($p.Classic)-waf-snapshot.json"
-        $waf | Set-Content -Path $wafPath -Encoding ASCII
-        Log "  WAF snapshot: $wafPath" "OK"
+    Log "Snapshotting Classic '$($p.Classic)' ($($p.MigrationType)) to $snapPath"
+    if ($p.MigrationType -eq "AFD") {
+        az network front-door show -g $ResourceGroup --name $p.Classic -o json 2>$null | Set-Content -Path $snapPath -Encoding ASCII
+        $waf = az network front-door waf-policy list -g $ResourceGroup --query "[?contains(frontendEndpointLinks[].id, '$($p.Classic)')]" -o json 2>$null
+        if ($waf) {
+            $wafPath = Join-Path $snapshotDir "$($p.Classic)-waf-snapshot.json"
+            $waf | Set-Content -Path $wafPath -Encoding ASCII
+            Log "  WAF snapshot: $wafPath" "OK"
+        }
+    } else {
+        az cdn profile show -g $ResourceGroup --name $p.Classic -o json 2>$null | Set-Content -Path $snapPath -Encoding ASCII
+        $cdnEpsJson = az cdn endpoint list -g $ResourceGroup --profile-name $p.Classic -o json 2>$null
+        if ($cdnEpsJson) {
+            $cdnEpsPath = Join-Path $snapshotDir "$($p.Classic)-cdn-endpoints-snapshot.json"
+            $cdnEpsJson | Set-Content -Path $cdnEpsPath -Encoding ASCII
+            Log "  CDN endpoints snapshot: $cdnEpsPath" "OK"
+        }
     }
     Log "  Classic snapshot: $snapPath" "OK"
 }
 Log "All snapshots saved to $snapshotDir" "OK"
 Log "Post-commit recovery requires these JSON files - DO NOT DELETE the snapshot dir" "WARN"
 
+$validateResults = @{}
 if (-not $SkipValidate) {
     Banner "Phase 2 - Validate migration eligibility (az afd profile validate-migration)"
     $blockers = @()
     foreach ($p in $plan) {
         if ($p.StandardExists -and $p.StandardState -in @("Migrated","Migrating","Committed")) {
             Log "Skipping validate for $($p.Classic) - target Standard already exists in migration state" "WARN"
+            $validateResults[$p.Classic] = "skipped (target exists)"
             continue
         }
-        SubBanner "Validating $($p.Classic)"
+        SubBanner "Validating $($p.Classic) ($($p.MigrationType))"
         $vOut = az afd profile validate-migration `
             --resource-group $ResourceGroup `
             --classic-resource-id $p.ClassicResourceId `
@@ -222,17 +278,22 @@ if (-not $SkipValidate) {
             $errText = ($vOut | Out-String).Trim()
             Log "validate-migration FAILED for $($p.Classic): $errText" "ERR"
             $blockers += "$($p.Classic): $errText"
+            $validateResults[$p.Classic] = "FAILED: $errText"
         } else {
             $vJson = ($vOut | Out-String) | ConvertFrom-Json -ErrorAction SilentlyContinue
             $errs = @()
             if ($vJson) { $errs = @($vJson.errors) }
             if ($errs.Count -gt 0) {
+                $blockerMsgs = @()
                 foreach ($e in $errs) {
                     Log "  blocker: $($e.errorMessage)" "ERR"
                     $blockers += "$($p.Classic): $($e.errorMessage)"
+                    $blockerMsgs += $e.errorMessage
                 }
+                $validateResults[$p.Classic] = "BLOCKED: " + ($blockerMsgs -join "; ")
             } else {
                 Log "validate-migration OK for $($p.Classic)" "OK"
+                $validateResults[$p.Classic] = "PASSED"
             }
         }
     }
@@ -251,6 +312,7 @@ Banner "Phase 2.5 - Migration plan"
 $plan | ForEach-Object {
     Log ""
     Log "  Classic:          $($_.Classic)" "STEP"
+    Log "  Migration type:   $($_.MigrationType)$(if ($_.CdnSku) { " (CDN SKU: $($_.CdnSku))" })"
     Log "  -> Standard:      $($_.Standard)  ($(if ($_.StandardExists) { "EXISTS, state: $($_.StandardState)" } else { "will be created" }))"
     Log "  Custom domains:   $($_.CustomDomains.Count)"
     foreach ($d in $_.CustomDomains) { Log "    - $($d.HostName)" }
@@ -291,13 +353,23 @@ foreach ($p in $plan) {
     SubBanner "Migrating $($p.Classic)  ->  $($p.Standard)"
 
     $r = [PSCustomObject]@{
-        Classic    = $p.Classic
-        Standard   = $p.Standard
-        Status     = "pending"
-        Error      = ""
-        DnsRecords = @()
-        TestFqdn   = ""
-        Decision   = ""
+        Classic           = $p.Classic
+        Standard          = $p.Standard
+        MigrationType     = $p.MigrationType
+        CdnSku            = $p.CdnSku
+        ClassicResourceId = $p.ClassicResourceId
+        Status            = "pending"
+        Error             = ""
+        DnsRecords        = @()
+        TestFqdn          = ""
+        AllNewEndpoints   = @()
+        Decision          = ""
+        WatchdogTicks     = @()
+        PreCDs            = @($p.CustomDomains | ForEach-Object { $_.HostName })
+        PostCDs           = @()
+        ValidateResult    = if ($validateResults -and $validateResults.ContainsKey($p.Classic)) { $validateResults[$p.Classic] } else { "not-run" }
+        StartedAt         = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        CompletedAt       = ""
     }
 
     if ($DryRun) {
@@ -309,7 +381,7 @@ foreach ($p in $plan) {
     }
 
     if (-not $p.StandardExists) {
-        Log "Step A - Submitting migrate request: classic=$($p.Classic) -> standard=$($p.Standard)..."
+        Log "Step A - Submitting migrate request: classic=$($p.Classic) ($($p.MigrationType)) -> standard=$($p.Standard)..."
         $migOut = az afd profile migrate `
             --resource-group $ResourceGroup `
             --profile-name $p.Standard `
@@ -321,6 +393,7 @@ foreach ($p in $plan) {
             Log "Migrate FAILED for $($p.Classic): $errText" "ERR"
             $r.Status = "migrate-failed"
             $r.Error  = $errText
+            $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
             $results += $r
             Save-State -Plan $plan -Results $results
             continue
@@ -335,6 +408,7 @@ foreach ($p in $plan) {
     $stdEpText = az afd endpoint list -g $ResourceGroup --profile-name $p.Standard --query "[].hostName" -o tsv 2>$null
     $stdEndpoints = @($stdEpText -split "`r?`n" | Where-Object { $_ })
     if ($stdEndpoints.Count -gt 0) { $r.TestFqdn = $stdEndpoints[0] }
+    $r.AllNewEndpoints = $stdEndpoints
 
     Log ""
     Log "================================================================================" "GATE"
@@ -342,7 +416,7 @@ foreach ($p in $plan) {
     Log "================================================================================" "GATE"
     Log "" "GATE"
     Log "Standard profile '$($p.Standard)' is created and READY to commit." "GATE"
-    Log "Classic '$($p.Classic)' is STILL ACTIVE and serving production traffic." "GATE"
+    Log "Classic '$($p.Classic)' ($($p.MigrationType)) is STILL ACTIVE and serving production traffic." "GATE"
     Log "" "GATE"
     Log "Test endpoint(s) on the new Standard:" "GATE"
     foreach ($ep in $stdEndpoints) { Log "    https://$ep/" "GATE" }
@@ -375,6 +449,7 @@ foreach ($p in $plan) {
     if ($decision -eq "ROLLBACK") {
         $rbOk = Invoke-Rollback -ClassicName $p.Classic -StandardName $p.Standard -RG $ResourceGroup
         $r.Status = if ($rbOk) { "rolled-back" } else { "rollback-failed" }
+        $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
         $results += $r
         Save-State -Plan $plan -Results $results
         continue
@@ -382,8 +457,9 @@ foreach ($p in $plan) {
 
     if ($decision -eq "SKIP") {
         Log "Skipping commit for $($p.Classic) - Standard '$($p.Standard)' left in Migrating state" "WARN"
-        Log "Resume later with: .\migrate-pyx-atomic-tonight.ps1 -OnlyProfiles $($p.Classic) -NoConfirm" "WARN"
+        Log "Resume later with: .\migrate-pyx-atomic-v2-tonight.ps1 -OnlyProfiles $($p.Classic) -NoConfirm" "WARN"
         $r.Status = "migrated-not-committed"
+        $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
         $results += $r
         Save-State -Plan $plan -Results $results
         continue
@@ -402,9 +478,10 @@ foreach ($p in $plan) {
         if ($LASTEXITCODE -ne 0) {
             $errText = ($commitOut | Out-String).Trim()
             Log "Commit FAILED for $($p.Standard): $errText" "ERR"
-            Log "Standard is still in Migrating state - you can rerun this script with -OnlyProfiles $($p.Classic) -NoConfirm to retry, or -Rollback $($p.Classic) to delete it" "ERR"
+            Log "Standard is still in Migrating state - rerun with -OnlyProfiles $($p.Classic) -NoConfirm to retry, or -Rollback $($p.Classic) to delete" "ERR"
             $r.Status = "commit-failed"
             $r.Error  = $errText
+            $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
             $results += $r
             Save-State -Plan $plan -Results $results
             continue
@@ -415,7 +492,7 @@ foreach ($p in $plan) {
     }
 
     if (-not $SkipWatchdog -and $r.TestFqdn) {
-        SubBanner "Phase 4 - Post-commit watchdog ($WatchdogSec sec) for $($p.Standard)"
+        SubBanner "Phase 4 - Post-migration watchdog ($WatchdogSec sec) for $($p.Standard)"
         $deadline = (Get-Date).AddSeconds($WatchdogSec)
         $tick = 0
         $watchdogIssue = $false
@@ -423,6 +500,7 @@ foreach ($p in $plan) {
             $tick++
             $code = ""
             $azref = ""
+            $stamp = (Get-Date).ToString("HH:mm:ss")
             try {
                 $resp = Invoke-WebRequest -Uri "https://$($r.TestFqdn)/" -Method Head -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
                 $code  = $resp.StatusCode
@@ -430,9 +508,18 @@ foreach ($p in $plan) {
             } catch {
                 $code = "ERR: $($_.Exception.Message.Substring(0, [Math]::Min(80, $_.Exception.Message.Length)))"
             }
+            $tickOk = ("$code" -match '^(2|3)\d\d$')
+            $r.WatchdogTicks += [PSCustomObject]@{
+                Tick    = $tick
+                Time    = $stamp
+                Url     = "https://$($r.TestFqdn)/"
+                Code    = "$code"
+                AzRef   = if ($azref) { $azref.Substring(0, [Math]::Min(40, $azref.Length)) } else { "" }
+                Healthy = $tickOk
+            }
             $msg = "watchdog tick $tick - $($r.TestFqdn) -> $code"
             if ($azref) { $msg += "  (x-azure-ref: $($azref.Substring(0, [Math]::Min(40, $azref.Length))))" }
-            if ("$code" -match '^(2|3)\d\d$') { Log $msg "OK" } else { Log $msg "WARN"; $watchdogIssue = $true }
+            if ($tickOk) { Log $msg "OK" } else { Log $msg "WARN"; $watchdogIssue = $true }
             if ((Get-Date) -ge $deadline) { break }
             Start-Sleep -Seconds $WatchdogIntervalSec
         }
@@ -465,6 +552,7 @@ foreach ($p in $plan) {
         }
     }
     Log "$($stdCustomDomains.Count) custom domain(s) on new Standard"
+    $r.PostCDs = @($stdCustomDomains | ForEach-Object { "$($_.HostName) [$($_.ValidationState)]" })
 
     $stdEpMap = @{}
     $stdEpText2 = az afd endpoint list -g $ResourceGroup --profile-name $p.Standard --query "[].[name, hostName]" -o tsv 2>$null
@@ -515,6 +603,7 @@ foreach ($p in $plan) {
     }
 
     $r.Status = "migrated-and-committed"
+    $r.CompletedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     $results += $r
     Save-State -Plan $plan -Results $results
 }
@@ -618,9 +707,9 @@ if (-not $SkipVerifyAlso -and $VerifyAlsoStandard.Count -gt 0) {
 Banner "Phase 5 - Aggregate DNS handoff + summary"
 
 $migrated = @($results | Where-Object { $_.Status -eq "migrated-and-committed" })
-$rolled   = @($results | Where-Object { $_.Status -eq "rolled-back" })
-$pending  = @($results | Where-Object { $_.Status -eq "migrated-not-committed" })
-$failed   = @($results | Where-Object { $_.Status -in @("migrate-failed","commit-failed","rollback-failed","post-commit-readback-failed") })
+$rolled   = @($results | Where-Object { $_.Status -in @("rolled-back","cdn-rollback-by-operator") })
+$pending  = @($results | Where-Object { $_.Status -in @("migrated-not-committed","cdn-portal-skip") })
+$failed   = @($results | Where-Object { $_.Status -in @("migrate-failed","commit-failed","rollback-failed","post-commit-readback-failed","cdn-portal-target-not-found") })
 
 Write-Host ""
 Write-Host "   ===============================================================================" -ForegroundColor Green
@@ -723,7 +812,9 @@ $summaryRows = ($results | ForEach-Object {
     $color = switch ($_.Status) {
         "migrated-and-committed"     {"#1B6B3A"}
         "rolled-back"                {"#B7791F"}
+        "cdn-rollback-by-operator"   {"#B7791F"}
         "migrated-not-committed"     {"#1F3D7A"}
+        "cdn-portal-skip"            {"#1F3D7A"}
         "dryrun"                     {"#555E6D"}
         default                      {"#9B2226"}
     }
@@ -731,7 +822,7 @@ $summaryRows = ($results | ForEach-Object {
         $safe = if ($_.Error.Length -gt 160) { $_.Error.Substring(0,160) } else { $_.Error }
         "<code>$([System.Web.HttpUtility]::HtmlEncode($safe))</code>"
     } else { "-" }
-    "<tr><td><b>$($_.Classic)</b></td><td><code>$($_.Standard)</code></td><td><code>$($_.Decision)</code></td><td style='color:$color'><b>$($_.Status)</b></td><td>$($_.DnsRecords.Count)</td><td>$errCell</td></tr>"
+    "<tr><td><b>$($_.Classic)</b></td><td><code>$($_.MigrationType)</code></td><td><code>$($_.Standard)</code></td><td><code>$($_.Decision)</code></td><td style='color:$color'><b>$($_.Status)</b></td><td>$($_.DnsRecords.Count)</td><td>$errCell</td></tr>"
 }) -join "`n"
 
 $summaryHtml = @"
@@ -749,7 +840,7 @@ code{font-family:Consolas,monospace;font-size:12px;background:#F5F7FA;padding:2p
 <p>Migrated &amp; committed: $($migrated.Count) &middot; Rolled back: $($rolled.Count) &middot; Pending commit: $($pending.Count) &middot; Failed: $($failed.Count) &middot; Total: $($results.Count)</p>
 <p>Snapshot dossier (for any post-commit recovery): <code>$snapshotDir</code></p>
 <table>
-<thead><tr><th>Classic profile</th><th>New Standard</th><th>Operator decision</th><th>Status</th><th>DNS records</th><th>Error</th></tr></thead>
+<thead><tr><th>Classic profile</th><th>Type</th><th>New Standard</th><th>Operator decision</th><th>Status</th><th>DNS records</th><th>Error</th></tr></thead>
 <tbody>
 $summaryRows
 </tbody></table>
@@ -757,6 +848,178 @@ $summaryRows
 </body></html>
 "@
 Set-Content -Path $summaryPath -Value $summaryHtml -Encoding ASCII
+
+$endTime = Get-Date
+$durationMin = [Math]::Round(($endTime - $startTime).TotalMinutes, 1)
+
+$changeCards = @()
+foreach ($r in $results) {
+    $statusColor = switch ($r.Status) {
+        "migrated-and-committed"     {"#1B6B3A"}
+        "rolled-back"                {"#B7791F"}
+        "cdn-rollback-by-operator"   {"#B7791F"}
+        "migrated-not-committed"     {"#1F3D7A"}
+        "cdn-portal-skip"            {"#1F3D7A"}
+        "dryrun"                     {"#555E6D"}
+        default                      {"#9B2226"}
+    }
+
+    $methodLabel = "Atomic API (az afd profile migrate + migration-commit)$(if ($r.MigrationType -eq 'CDN') { ' - source: Microsoft CDN Classic' } else { '' })"
+    $skuLabel = if ($r.CdnSku) { "$($r.MigrationType) ($($r.CdnSku))" } else { $r.MigrationType }
+
+    $preCdRows = if ($r.PreCDs -and $r.PreCDs.Count -gt 0) {
+        ($r.PreCDs | ForEach-Object { "<li><code>$_</code></li>" }) -join ""
+    } else { "<li><i>none</i></li>" }
+
+    $postCdRows = if ($r.PostCDs -and $r.PostCDs.Count -gt 0) {
+        ($r.PostCDs | ForEach-Object { "<li><code>$_</code></li>" }) -join ""
+    } else { "<li><i>not captured (status: $($r.Status))</i></li>" }
+
+    $watchHtml = ""
+    $watchRate = "n/a"
+    if ($r.WatchdogTicks -and $r.WatchdogTicks.Count -gt 0) {
+        $okCount = @($r.WatchdogTicks | Where-Object { $_.Healthy }).Count
+        $totalTicks = $r.WatchdogTicks.Count
+        $watchRate = "$okCount / $totalTicks (" + [Math]::Round(($okCount / $totalTicks) * 100, 1) + "%)"
+        $tickRows = ($r.WatchdogTicks | ForEach-Object {
+            $tColor = if ($_.Healthy) { "#1B6B3A" } else { "#9B2226" }
+            "<tr><td>$($_.Tick)</td><td>$($_.Time)</td><td><code>$($_.Url)</code></td><td style='color:$tColor'><b>$($_.Code)</b></td><td><code>$($_.AzRef)</code></td></tr>"
+        }) -join "`n"
+        $rateColor = if ($okCount -eq $totalTicks) { "#1B6B3A" } else { "#B7791F" }
+        $watchHtml = "<h3>Watchdog verification</h3><p>Health check success rate: <b style='color:$rateColor;font-size:15px'>$watchRate</b> across the $WatchdogSec sec window after commit.</p><table><thead><tr><th>#</th><th>Time</th><th>URL</th><th>HTTP code</th><th>x-azure-ref</th></tr></thead><tbody>$tickRows</tbody></table>"
+    } else {
+        $watchHtml = "<h3>Watchdog verification</h3><p><i>No watchdog ticks recorded (skipped or no test FQDN available).</i></p>"
+    }
+
+    $endpointsList = if ($r.AllNewEndpoints -and $r.AllNewEndpoints.Count -gt 0) {
+        ($r.AllNewEndpoints | ForEach-Object { "<li><code>https://$_/</code></li>" }) -join ""
+    } else { "<li><i>none recorded</i></li>" }
+
+    $dnsHtml2 = ""
+    if ($r.DnsRecords -and $r.DnsRecords.Count -gt 0) {
+        $dnsRows = ($r.DnsRecords | ForEach-Object {
+            $hostShort = $_.Hostname.Split('.')[0]
+            $txtPart = if ($_.TxtValue) { "<code>_dnsauth.$hostShort</code> TXT <code>$($_.TxtValue)</code>" } else { "<i>cert pre-validated, no TXT needed</i>" }
+            "<tr><td><b>$($_.Hostname)</b></td><td>$($_.ValidationState)</td><td>$txtPart</td><td><code>$hostShort</code> CNAME <code>$($_.CnameTarget)</code></td></tr>"
+        }) -join "`n"
+        $dnsHtml2 = "<h3>DNS records to publish (Maryfin)</h3><table><thead><tr><th>Hostname</th><th>Cert state</th><th>TXT</th><th>CNAME</th></tr></thead><tbody>$dnsRows</tbody></table>"
+    }
+
+    $errBlock = ""
+    if ($r.Error) {
+        $safeErr = if ($r.Error.Length -gt 400) { $r.Error.Substring(0,400) } else { $r.Error }
+        $errBlock = "<h3 style='color:#9B2226'>Error</h3><pre style='background:#FEE;border-left:3px solid #9B2226;padding:10px;font-size:12px;white-space:pre-wrap'>$([System.Web.HttpUtility]::HtmlEncode($safeErr))</pre>"
+    }
+
+    $card = @"
+<div class='card'>
+  <h2>$($r.Classic) <span class='arrow'>-&gt;</span> $($r.Standard)</h2>
+  <table class='kv'>
+    <tr><td>Source type</td><td><b>$skuLabel</b></td></tr>
+    <tr><td>Source resource ID</td><td><code style='font-size:11px'>$($r.ClassicResourceId)</code></td></tr>
+    <tr><td>Migration method</td><td>$methodLabel</td></tr>
+    <tr><td>validate-migration</td><td><code>$($r.ValidateResult)</code></td></tr>
+    <tr><td>Operator decision</td><td><code>$($r.Decision)</code></td></tr>
+    <tr><td>Final status</td><td style='color:$statusColor'><b>$($r.Status)</b></td></tr>
+    <tr><td>Started</td><td>$($r.StartedAt)</td></tr>
+    <tr><td>Completed</td><td>$($r.CompletedAt)</td></tr>
+    <tr><td>Watchdog success</td><td><b>$watchRate</b></td></tr>
+    <tr><td>Custom domains</td><td>$($r.PreCDs.Count) before -&gt; $($r.PostCDs.Count) after</td></tr>
+  </table>
+  <h3>New AFD Standard endpoints</h3>
+  <ul>$endpointsList</ul>
+  <h3>Custom domains - before migration</h3>
+  <ul>$preCdRows</ul>
+  <h3>Custom domains - after migration (cert state)</h3>
+  <ul>$postCdRows</ul>
+  $watchHtml
+  $dnsHtml2
+  $errBlock
+</div>
+"@
+    $changeCards += $card
+}
+$changeCardsJoined = $changeCards -join "`n"
+if ($results.Count -eq 0) { $changeCardsJoined = "<p><i>No profiles processed.</i></p>" }
+
+$snapFiles = @()
+if (Test-Path $snapshotDir) {
+    $snapFiles = Get-ChildItem -Path $snapshotDir -File -ErrorAction SilentlyContinue | ForEach-Object { "<li><code>$($_.Name)</code> ($([Math]::Round($_.Length/1KB,1)) KB)</li>" }
+}
+$snapFilesJoined = if ($snapFiles.Count -gt 0) { $snapFiles -join "" } else { "<li><i>no snapshot files found</i></li>" }
+
+$logTailHtml = "<i>log file not readable</i>"
+if (Test-Path $logPath) {
+    $tail = Get-Content -Path $logPath -Tail 80 -ErrorAction SilentlyContinue
+    if ($tail) {
+        $tailEsc = ($tail | ForEach-Object { [System.Web.HttpUtility]::HtmlEncode($_) }) -join "`n"
+        $logTailHtml = "<pre style='background:#0F172A;color:#E2E8F0;padding:12px;border-radius:6px;font-family:Consolas,monospace;font-size:11px;overflow-x:auto;max-height:400px;overflow-y:auto'>$tailEsc</pre>"
+    }
+}
+
+$changeReportHtml = @"
+<!DOCTYPE html><html><head><meta charset='UTF-8'><title>PYX migration change report - $timestamp</title>
+<style>
+body{font-family:Segoe UI,Arial;max-width:1200px;margin:30px auto;padding:0 24px;color:#11151C;line-height:1.55}
+h1{color:#1F3D7A;border-bottom:2px solid #1F3D7A;padding-bottom:8px}
+h2{color:#1F3D7A;font-size:18px;margin-top:18px;margin-bottom:8px}
+h3{color:#1F3D7A;font-size:14px;margin-top:18px;margin-bottom:6px;border-bottom:1px solid #E5E8EE;padding-bottom:4px}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}
+table.kv{margin-bottom:14px}
+table.kv td:first-child{width:200px;color:#555E6D;font-weight:600}
+th{background:#F5F7FA;padding:8px 10px;text-align:left;border-bottom:2px solid #1F3D7A;color:#1F3D7A;font-size:12px}
+td{padding:8px 10px;border-bottom:1px solid #E5E8EE;vertical-align:top}
+code{font-family:Consolas,monospace;font-size:12px;background:#F5F7FA;padding:2px 6px;border-radius:3px;word-break:break-all}
+ul{margin:6px 0;padding-left:22px}
+li{margin:3px 0}
+.card{background:#FFF;border:1px solid #C8CFD9;border-radius:8px;padding:18px 22px;margin:18px 0;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+.arrow{color:#1F3D7A;font-weight:600}
+.summary{background:#F5F7FA;border-left:4px solid #1F3D7A;padding:14px 18px;margin:14px 0}
+.foot{margin-top:30px;padding-top:12px;border-top:1px solid #C8CFD9;color:#555E6D;font-size:12px}
+.bigcount{font-size:24px;font-weight:600;color:#1F3D7A}
+</style></head><body>
+
+<h1>PYX migration change report</h1>
+<p>Detailed evidence of every change made during the migration window. Includes per-profile source state, migration method, operator decisions, post-migration verification, and rollback artifacts.</p>
+
+<div class='summary'>
+<table class='kv'>
+<tr><td>Run timestamp</td><td><code>$timestamp</code></td></tr>
+<tr><td>Started</td><td>$($startTime.ToString("yyyy-MM-dd HH:mm:ss"))</td></tr>
+<tr><td>Ended</td><td>$($endTime.ToString("yyyy-MM-dd HH:mm:ss"))</td></tr>
+<tr><td>Duration</td><td>$durationMin minutes</td></tr>
+<tr><td>Subscription</td><td><code>$SubscriptionId</code></td></tr>
+<tr><td>Resource group</td><td><code>$ResourceGroup</code></td></tr>
+<tr><td>Profiles in scope</td><td>$($results.Count)</td></tr>
+<tr><td>Migrated and committed</td><td><span class='bigcount' style='color:#1B6B3A'>$($migrated.Count)</span></td></tr>
+<tr><td>Rolled back</td><td><span class='bigcount' style='color:#B7791F'>$($rolled.Count)</span></td></tr>
+<tr><td>Pending / skipped</td><td><span class='bigcount' style='color:#1F3D7A'>$($pending.Count)</span></td></tr>
+<tr><td>Failed</td><td><span class='bigcount' style='color:#9B2226'>$($failed.Count)</span></td></tr>
+</table>
+</div>
+
+<h2>Per-profile change detail</h2>
+$changeCardsJoined
+
+<h2>Snapshot dossier (rollback artifacts)</h2>
+<p>Full pre-migration JSON snapshots are stored at <code>$snapshotDir</code> and are required for any post-commit recovery scenario:</p>
+<ul>$snapFilesJoined</ul>
+
+<h2>Run log (last 80 lines)</h2>
+$logTailHtml
+
+<h2>Companion artifacts</h2>
+<ul>
+<li>DNS handoff (Maryfin): <code>$dnsHtmlPath</code></li>
+<li>Migration summary: <code>$summaryPath</code></li>
+<li>Full run log: <code>$logPath</code></li>
+<li>State JSON (machine-readable): <code>$statePath</code></li>
+</ul>
+
+<div class='foot'>Prepared by Syed Rizvi - PYX Health Production - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</div>
+</body></html>
+"@
+Set-Content -Path $changePath -Value $changeReportHtml -Encoding ASCII
 
 Banner "DONE"
 Log "Migrated & committed: $($migrated.Count)  -  Rolled back: $($rolled.Count)  -  Pending: $($pending.Count)  -  Failed: $($failed.Count)" "OK"
@@ -767,6 +1030,7 @@ Log "  Snapshot dir    : $snapshotDir   (DO NOT DELETE - rollback dossier)"
 Log "  State JSON      : $statePath"
 Log "  DNS handoff HTML: $dnsHtmlPath  <- send to Maryfin"
 Log "  Summary HTML    : $summaryPath"
+Log "  Change report   : $changePath  <- detailed evidence for Tony"
 if ($pending.Count -gt 0) {
     Log ""
     Log "PENDING COMMIT - rerun with -OnlyProfiles <name> -NoConfirm to finish, or -Rollback <name> to abort:" "WARN"
