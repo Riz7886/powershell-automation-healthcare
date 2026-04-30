@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PYX Front Door Migration - Status and Recommendation</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 32px; color: #11151C; line-height: 1.65; background: #FFFFFF; }
+  h1 { color: #1F3D7A; border-bottom: 3px solid #1F3D7A; padding-bottom: 12px; font-size: 26px; margin-bottom: 4px; }
+  .subhead { color: #555E6D; font-size: 14px; margin-top: 0; margin-bottom: 28px; }
+  h2 { color: #1F3D7A; font-size: 19px; margin-top: 32px; padding-bottom: 8px; border-bottom: 1px solid #C8CFD9; }
+  p, li { font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+  th { background: #F5F7FA; padding: 11px 13px; text-align: left; border-bottom: 2px solid #1F3D7A; color: #1F3D7A; font-weight: 600; }
+  td { padding: 10px 13px; border-bottom: 1px solid #E5E8EE; vertical-align: top; }
+  code { font-family: Consolas, 'Courier New', monospace; font-size: 12px; background: #F5F7FA; padding: 2px 6px; border-radius: 3px; color: #1F3D7A; }
+  .summary { background: #F5F7FA; border-left: 4px solid #1F3D7A; padding: 18px 22px; margin: 20px 0; }
+  .ask { background: #E7F0FE; border-left: 4px solid #1F3D7A; padding: 16px 20px; margin: 16px 0; }
+  .red { color: #9B2226; font-weight: 600; }
+  .green { color: #1B6B3A; font-weight: 600; }
+  .amber { color: #B7791F; font-weight: 600; }
+  .gray { color: #555E6D; }
+  .foot { margin-top: 48px; padding-top: 14px; border-top: 1px solid #C8CFD9; color: #555E6D; font-size: 12px; text-align: center; }
+  ul, ol { margin: 8px 0 12px 0; padding-left: 24px; }
+  li { margin-bottom: 4px; }
+  blockquote { background: #F5F7FA; border-left: 4px solid #1F3D7A; padding: 14px 20px; margin: 14px 0; font-style: italic; font-size: 13px; color: #1F3D7A; }
+</style>
+</head>
+<body>
+
+<h1>PYX Front Door Migration - Status and Recommendation</h1>
+<p class="subhead">Production cutover window | April 29-30, 2026</p>
+
+<div class="summary">
+<b>Summary:</b> The migration window opened the evening of April 29 with a clear plan to move the five remaining PYX Front Door Classic profiles to the new Azure Front Door Standard SKU. After working through the migration tooling for several hours, the Microsoft Azure portal itself surfaced a platform constraint that forces the production profiles onto Premium tier rather than Standard. Rather than make a unilateral cost or security call on production traffic, I have paused at the decision point and brought this back for guidance.
+</div>
+
+<h2>1. What I did tonight</h2>
+
+<p>The plan was to migrate <code>hipyx</code>, <code>pyxiq</code>, <code>pyxiq-stage</code>, <code>pyxpwa-stage</code>, and the <code>standard</code> CDN profile from Classic to the new SKU before the Microsoft retirement deadline of March 31, 2027.</p>
+
+<p>I built a PowerShell migration script earlier in the day and worked through it across the evening, refining the WAF mapping logic and the cmdlet parameter format as each test surfaced a new aspect of the underlying constraint. Approaches exercised against the live environment:</p>
+
+<ul>
+  <li>Azure CLI (<code>az afd profile migrate</code>) with the documented WAF mapping arguments</li>
+  <li>Direct Azure REST API calls against the migration endpoint</li>
+  <li>Native Azure PowerShell (Az.Cdn) module cmdlets - the Microsoft-recommended path</li>
+  <li>Pre-creating new Standard-tier WAF policies and explicitly mapping them during migration</li>
+  <li>Azure portal Migration wizard - the interactive Microsoft-supplied tool</li>
+</ul>
+
+<p>Every approach surfaced the same root cause at the WAF mapping step. The constraint is enforced by Microsoft at the Azure control-plane layer, not at the tooling layer. Once the Azure portal Migration wizard surfaced the same error visibly and explicitly, the picture was complete - this is a Microsoft platform constraint, and it requires a tier decision rather than more tooling work.</p>
+
+<h2>2. Why it did not work - the Microsoft constraint</h2>
+
+<p>The Microsoft Azure portal Migration wizard greys out the Standard tier option for the <code>hipyx</code> profile and displays the following message at the Prepare step:</p>
+
+<blockquote>
+The AFD (classic) instance has managed WAF rules associated, and will be migrated to Premium tier. If you want to migrate to Standard tier, please remove the association on AFD (classic) and migrate afterwards.
+</blockquote>
+
+<p>Translation - the Classic Web Application Firewall policy on <code>www.hipyx.com</code> uses Microsoft-managed rule sets (OWASP protection, Bot Manager, Microsoft threat intelligence). The new Standard SKU does not support managed rule sets at all - only custom rules. The portal will not allow a downgrade to Standard while managed WAF rules are attached, because the Standard SKU physically cannot host them.</p>
+
+<table>
+  <thead>
+    <tr><th>Capability</th><th>Standard ($35/mo)</th><th>Premium ($330/mo)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Custom WAF rules</td><td class="green">Supported</td><td class="green">Supported</td></tr>
+    <tr><td>OWASP managed rule set (Default Rule Set)</td><td class="red">Not supported</td><td class="green">Supported</td></tr>
+    <tr><td>Bot Manager rule set</td><td class="red">Not supported</td><td class="green">Supported</td></tr>
+    <tr><td>Microsoft Threat Intelligence rules</td><td class="red">Not supported</td><td class="green">Supported</td></tr>
+    <tr><td>Private Link origins</td><td class="red">Not supported</td><td class="green">Supported</td></tr>
+  </tbody>
+</table>
+
+<p>The only way to force Standard tier would be to first detach the managed WAF policy from the Classic profile, migrate, then author and attach a new Standard custom-rules-only WAF policy. That sequence leaves <code>www.hipyx.com</code> with no WAF protection at all for 20 to 45 minutes per profile. For a production login domain, that exposure window is not something I am willing to accept on my own without explicit sign-off.</p>
+
+<h2>3. What I recommend we do</h2>
+
+<div class="ask">
+<b>Two Premium, three Standard.</b>
+<ul>
+  <li><b>Premium tier ($330 per month each)</b> for <code>hipyx</code> and <code>pyxiq</code> - production login traffic, protected by managed WAF rules today. Downgrading these is a real and permanent security regression.</li>
+  <li><b>Standard tier ($35 per month each)</b> for <code>pyxiq-stage</code>, <code>pyxpwa-stage</code>, and the <code>standard</code> CDN profile - lower-risk surfaces, internal or staging use, custom rules sufficient.</li>
+</ul>
+This split preserves managed WAF coverage on the only two domains exposed to live customer login traffic, while taking the cost win on three lower-risk profiles.
+</div>
+
+<table>
+  <thead>
+    <tr><th>Path</th><th>Configuration</th><th>Monthly</th><th>Annual</th><th>Security posture</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>All Standard</td><td>5 profiles at $35</td><td>$175</td><td>$2,100</td><td class="red">Permanent loss of managed WAF on production login</td></tr>
+    <tr><td><b>Recommended split</b></td><td><b>2 Premium + 3 Standard</b></td><td><b>$765</b></td><td><b>$9,180</b></td><td class="green"><b>Production WAF preserved; staging on Standard</b></td></tr>
+    <tr><td>All Premium</td><td>5 profiles at $330</td><td>$1,650</td><td>$19,800</td><td class="green">Full coverage everywhere - overkill for staging</td></tr>
+    <tr><td class="gray">Current Classic baseline</td><td class="gray">Classic SKU (retiring March 2027)</td><td class="gray">~$220</td><td class="gray">~$2,640</td><td class="gray">Current state - Microsoft is discontinuing this option</td></tr>
+  </tbody>
+</table>
+
+<p>Net spend impact of the recommended split versus today's Classic baseline is approximately <b>+$545 per month</b> (or +$6,540 per year). Savings versus an all-Premium approach is approximately <b>$885 per month</b> ($10,620 per year).</p>
+
+<h2>4. Decision needed to proceed</h2>
+
+<div class="ask">
+One of the following before further work proceeds:
+<ol>
+  <li><b>Approve the recommended split</b> - 2 Premium plus 3 Standard, $765 per month total. <span class="green">My recommendation.</span></li>
+  <li><b>Approve all Premium</b> - $1,650 per month. Simplest, full WAF coverage everywhere.</li>
+  <li><b>Approve all Standard with documented WAF gap</b> - $175 per month. Detach managed WAF on production profiles, migrate, reattach Standard custom-rules-only WAF afterwards. 20 to 45 minute WAF coverage gap per production profile is documented and accepted.</li>
+  <li><b>Postpone</b> - reschedule to a different window. Microsoft retirement deadline of March 31, 2027 still applies.</li>
+</ol>
+</div>
+
+<p>Once a tier is approved, I can execute the migration through the Azure portal Migration wizard - approximately 10 to 15 minutes per profile, plus 5 to 30 minutes per profile for DNS propagation. The DNS owner is already on standby. The wizard for <code>hipyx</code> is currently open at the Prepare step with the configuration ready to go.</p>
+
+<h2>5. Background context</h2>
+
+<ul>
+  <li>Microsoft retires Azure Front Door Classic on <b>March 31, 2027</b>. Every Classic profile must be migrated before that date.</li>
+  <li><b>April 24, 2026</b> - <code>survey.farmboxrx.com</code> migrated successfully from <code>hipyx</code> Classic to a new Standard profile. Stable since.</li>
+  <li><b>April 28, 2026</b> - first attempt at <code>www.hipyx.com</code> cutover; rolled back cleanly on a hostname-conflict timing issue. No customer impact reported.</li>
+  <li><b>April 29-30, 2026</b> - second attempt across the remaining five Classic profiles; paused at the Microsoft tier constraint described above pending tier decision.</li>
+</ul>
+
+<div class="foot">
+Prepared by Syed Rizvi - April 30, 2026
+</div>
+
+</body>
+</html>
