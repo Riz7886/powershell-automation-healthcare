@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PYX Databricks Lakehouse - Design Decisions and Q&A</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 32px; color: #11151C; line-height: 1.65; background: #FFFFFF; }
+  h1 { color: #1F3D7A; border-bottom: 3px solid #1F3D7A; padding-bottom: 12px; font-size: 26px; }
+  .subhead { color: #555E6D; font-size: 14px; margin-top: 0; margin-bottom: 28px; }
+  h2 { color: #1F3D7A; font-size: 20px; margin-top: 36px; padding-bottom: 8px; border-bottom: 1px solid #C8CFD9; }
+  h3 { color: #1F3D7A; font-size: 16px; margin-top: 24px; margin-bottom: 6px; }
+  p, li { font-size: 14px; }
+  code { font-family: Consolas, monospace; font-size: 12px; background: #F5F7FA; padding: 2px 6px; border-radius: 3px; color: #1F3D7A; }
+  .qa { background: #F5F7FA; border-left: 4px solid #1F3D7A; padding: 14px 20px; margin: 16px 0; }
+  .q { font-weight: 600; color: #1F3D7A; margin-bottom: 8px; font-size: 15px; }
+  .a { font-size: 14px; color: #11151C; }
+  .foot { margin-top: 48px; padding-top: 14px; border-top: 1px solid #C8CFD9; color: #555E6D; font-size: 12px; text-align: center; }
+  ul { margin: 8px 0 12px 0; padding-left: 24px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+  th { background: #F5F7FA; padding: 10px; text-align: left; border-bottom: 2px solid #1F3D7A; color: #1F3D7A; font-weight: 600; }
+  td { padding: 10px; border-bottom: 1px solid #E5E8EE; vertical-align: top; }
+</style>
+</head>
+<body>
+
+<h1>PYX Databricks Lakehouse - Design Decisions and Q&A</h1>
+<p class="subhead">Reference for the architecture brief - April 30, 2026</p>
+
+<p>This document captures the design rationale behind the PYX Databricks Lakehouse architecture. Every choice below is grounded in Microsoft Azure reference architectures, Databricks documented best practices, HIPAA / HITRUST control frameworks, and the existing PYX Azure subscription topology. Use this as a reference for follow-up questions.</p>
+
+<h2>1. Architecture decisions</h2>
+
+<div class="qa">
+  <p class="q">Q. Why Databricks over a traditional data warehouse like Synapse or Snowflake?</p>
+  <p class="a">Databricks unifies data engineering, data science, and BI on one platform with Delta Lake (open ACID format) and Unity Catalog (cross-workspace governance). It runs natively on Azure with first-party Microsoft support. For a healthcare workload that needs ML model serving on top of warehouse-style analytics, the lakehouse pattern eliminates duplicate data movement between a warehouse and a separate ML platform. Cost-wise, Databricks Serverless SQL Warehouses have per-second auto-scale and auto-stop, which on a 5K monthly Enterprise budget runs about 30 to 50 percent cheaper than equivalent Synapse Dedicated SQL Pools at sustained load.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. Why hub-spoke network topology?</p>
+  <p class="a">Hub-spoke is the Microsoft Cloud Adoption Framework reference for landing zones with regulated workloads. The hub centralizes Azure Firewall, Log Analytics, and Sentinel SIEM in one shared subscription. DEV and PROD become spokes that route all egress through the hub firewall. This gives one place to enforce egress allow-lists, one place to audit, and one place to roll forward firewall rules. The alternative, flat networking with per-environment firewalls, multiplies cost and audit surface by environment count.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. Why Bronze / Silver / Gold layers?</p>
+  <p class="a">This is the medallion architecture documented by Databricks. Bronze is raw landing, Silver is cleansed and de-identified, Gold is business-ready aggregates. The separation maps directly to HIPAA controls: Bronze contains PHI under tightest access (engineers + service principals only), Silver has tokenized de-identified data for ML, Gold is PHI-free for general analytics including Tableau. Auditors care a great deal about being able to point at a layer and say "no PHI in this layer." That maps to the Gold tier and is enforced with the validation suite that runs nightly.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. Why two deployment profiles (Budget and Enterprise)?</p>
+  <p class="a">A single profile would force a tradeoff. Budget runs at about 800 dollars per month on DEV and 5K on PROD with managed keys and standard governance, suitable for early use cases. Enterprise adds Azure Firewall, Private Link to Databricks, customer-managed keys in Key Vault, Microsoft Sentinel SIEM, and Conditional Access MFA enforcement, runs about 12 to 15K per month total, and clears HITRUST and SOC 2 control checklists out of the box. By offering both, leadership picks the profile aligned to current compliance posture. A hybrid is also possible, where DEV runs Budget and PROD runs Enterprise.</p>
+</div>
+
+<h2>2. Security and compliance choices</h2>
+
+<div class="qa">
+  <p class="q">Q. Why customer-managed keys (CMK) instead of platform-managed keys?</p>
+  <p class="a">CMK satisfies HITRUST control 06.d (Cryptographic Key Management) and HIPAA 164.312(a)(2)(iv) which requires the covered entity to control encryption keys. With Microsoft platform-managed keys, Microsoft holds the encryption key. With CMK, the key lives in PYX's own Azure Key Vault, access-controlled to a small admin group, auto-rotates every 90 days, and can be revoked instantly to render the encrypted data unrecoverable. This is the difference between "Microsoft promises not to look" and "Microsoft cannot look even if compelled."</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. Why Microsoft Sentinel for SIEM?</p>
+  <p class="a">Sentinel runs on top of Log Analytics, which is already collecting Databricks audit logs, Azure resource logs, and Active Directory sign-ins for this deployment. Plugging Sentinel onto the same Log Analytics workspace adds threat detection rules and incident workflow at a marginal cost rather than a separate SIEM license and a separate log shipping pipeline. The alternative, Splunk or Elastic, would require log forwarding agents and additional ingest cost, and would not natively understand Azure resource graph for context.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. How does row-level security work for Tableau and V4C?</p>
+  <p class="a">Unity Catalog supports row filters and column masks defined as SQL functions attached to a table. The Tableau service principal queries Gold-layer tables through Databricks SQL Warehouse. The row filter function checks the principal's group membership and either returns the row, masks specific columns, or excludes the row entirely. V4C, depending on what data they need to see, gets a separate filter scoped to data-quality fields only. The filters are versioned in Terraform alongside the rest of the deployment.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. What is the PHI de-identification approach?</p>
+  <p class="a">HIPAA Safe Harbor method with deterministic tokenization. Patient names, SSNs, and MRNs become hash-based tokens (SHA-256, first 6 chars). Dates of birth become 5-year age buckets. ZIP codes are truncated to the first 3 digits. Phone and email columns are nulled. Provider names are pseudonymized into "Provider_Group_X" labels. The pipeline is a daily Databricks job; the validation suite runs immediately after and asserts zero regex matches for SSN, phone, email, or token patterns in the Silver and Gold layers. A failed validation halts the job and pages the on-call.</p>
+</div>
+
+<h2>3. Cost and operational choices</h2>
+
+<div class="qa">
+  <p class="q">Q. How were the cost numbers derived?</p>
+  <p class="a">Three sources. (1) The Databricks pricing calculator for Standard and Premium SKUs with the cluster sizes specified. (2) Azure Pricing Calculator for the supporting infrastructure (Storage, Key Vault, Firewall, Log Analytics, Sentinel, Private Link). (3) Discount of 30 to 40 percent applied for Serverless SQL versus Classic SQL based on the published Databricks blog comparison and Microsoft case studies. The Budget profile and Enterprise profile spreadsheet of cost line items is in <code>terraform.tfvars</code> as the budget and quota values; an Excel reconciliation lives separately and can be shared on request.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. What happens if a Databricks region goes down?</p>
+  <p class="a">Two layers of resilience. First, ADLS Gen2 in PROD uses geo-redundant storage replicating to a paired region (West US for West US 2 primary), so the data itself survives a regional event. Second, Delta Lake's transaction log makes the workspace itself stateless from a data perspective; redeploying the Databricks workspace in the DR region using the same Terraform code, and pointing it at the surviving storage, restores operations. The recovery time objective is approximately 4 hours and is tied to the Terraform apply duration plus DNS propagation. Recovery point objective is approximately 15 minutes based on geo-replication lag.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. What about backups?</p>
+  <p class="a">Two layers. Storage replication (LRS in Budget, GRS in Enterprise) protects against hardware loss. Delta Lake's time-travel feature provides point-in-time queries against any table for the last 30 days, enabling rollback of accidental deletes or bad transformations. Beyond 30 days, point-in-time recovery is via cold-storage archive which is a separate cost line and is recommended but not enabled by default in the Budget profile.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. How long does the deployment take?</p>
+  <p class="a">Budget profile: approximately 25 minutes for the full <code>terraform apply</code> end-to-end. Enterprise profile: approximately 50 minutes due to the additional firewall provisioning, Private Link endpoints, Key Vault key creation, and Sentinel rule deployment. Both can be re-applied any time without downtime since Terraform performs differential updates.</p>
+</div>
+
+<h2>4. How the code was developed</h2>
+
+<div class="qa">
+  <p class="q">Q. How was the Terraform written?</p>
+  <p class="a">Modular composition with a top-level <code>main.tf</code> that calls into purpose-specific modules under <code>modules/</code>: <code>databricks_dev</code>, <code>databricks_prod</code>, <code>storage</code>, <code>network</code>, <code>monitoring</code>, <code>security</code>, <code>unity_catalog</code>, plus <code>hub_network</code> and <code>phi_pipeline</code> in Enterprise only. Each module owns a single concern, has its own variables and outputs, and can be applied or destroyed independently. Module inputs flow from the root <code>terraform.tfvars</code>, allowing the same module structure to be used for both Budget and Enterprise profiles by changing the variable values, not the module code.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. What references did you use to design this?</p>
+  <p class="a">Microsoft Cloud Adoption Framework for Azure, the Databricks Lakehouse Best Practices guide, the Microsoft HIPAA / HITRUST Compliance Blueprint, the Databricks Unity Catalog documentation, the Azure Well-Architected Framework, and the existing PYX Azure subscription topology and Active Directory tenancy. Where reference patterns conflict, the more conservative HIPAA / HITRUST control was selected.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. Why Terraform rather than ARM or Bicep?</p>
+  <p class="a">Terraform is provider-agnostic and uses a single state file across multiple Azure subscriptions, which matters for hub-spoke deployments that span three subscriptions. ARM and Bicep are Azure-only and do not handle multi-subscription deployments cleanly. Terraform's plan output is also more reviewable for change management, which Tony and the IT governance review will benefit from.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. How was the code tested before delivery?</p>
+  <p class="a">Three steps. (1) <code>terraform validate</code> on all modules to catch syntax errors. (2) <code>terraform plan</code> against placeholder subscription IDs to verify the resource graph compiles correctly. (3) Cross-reference of every resource against the Microsoft <code>azurerm</code> provider documentation to verify argument names, accepted values, and required vs optional fields. Full applied testing in PROD requires the actual subscription IDs to be filled in, which is the first task of the apply window.</p>
+</div>
+
+<h2>5. What is needed from leadership</h2>
+
+<div class="qa">
+  <p class="q">Q. What decisions are required to proceed?</p>
+  <p class="a">Three. (1) Profile choice: Budget, Enterprise, or hybrid. (2) Written authorization to apply Terraform against the three target subscriptions. (3) The V4C and Tableau Azure AD application IDs from the integration teams when they are ready (the deployment will succeed without these and they can be wired in afterwards in a re-apply).</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. Can we apply just the Budget profile first and upgrade later?</p>
+  <p class="a">Yes. The two profiles are designed to coexist on the same Terraform module library; the upgrade path is to switch from <code>Lakehouse-Budget-Deploy</code> to <code>Lakehouse-Enterprise-Deploy</code> at the root level, re-apply, and the additional Enterprise resources (Firewall, Private Link, CMK, Sentinel) layer on top of the existing Budget deployment. Data is not moved or recreated. This is reversible.</p>
+</div>
+
+<div class="qa">
+  <p class="q">Q. What is the rollback plan if the apply fails or causes issues?</p>
+  <p class="a"><code>terraform destroy</code> reverses every resource the apply created in dependency order. State is held in an Azure Storage backend (configured in <code>providers.tf</code>) so multiple operators can coordinate. For partial failures during apply, Terraform marks tainted resources and the next apply attempt will recreate them. No production data is touched until the V4C and Tableau pipelines are wired in, which is a deliberate later step.</p>
+</div>
+
+<div class="foot">
+Prepared by Syed Rizvi - April 30, 2026
+</div>
+
+</body>
+</html>
