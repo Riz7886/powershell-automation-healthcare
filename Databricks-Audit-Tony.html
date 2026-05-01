@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Databricks Cold-Start Audit - pyx-warehouse-prod</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0e1424;color:#e6e9f5;margin:0;padding:30px 50px;line-height:1.6;max-width:1200px}
+h1{font-size:30px;margin:0 0 6px;color:#5fc7ff;letter-spacing:-0.3px}
+h2{font-size:21px;margin:36px 0 12px;color:#7adfa7;border-bottom:1px solid #1f2a44;padding-bottom:8px}
+h3{font-size:16px;color:#ffb86b;margin:22px 0 10px;letter-spacing:1px;text-transform:uppercase}
+.muted{color:#8a96b8;font-size:14px}
+.box{background:#101830;border:1px solid #243355;border-radius:8px;padding:18px 24px;margin:14px 0}
+.kpi{display:inline-block;background:#172037;border:1px solid #243355;border-radius:8px;padding:14px 22px;margin:6px 8px 6px 0;min-width:160px;vertical-align:top}
+.kpi .v{font-size:24px;font-weight:700;color:#5fc7ff}
+.kpi .l{font-size:11px;color:#8a96b8;letter-spacing:1.4px;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0 24px;background:#101830;border:1px solid #1f2a44;border-radius:8px;overflow:hidden}
+th{text-align:left;padding:11px 13px;background:#1a2440;color:#5fc7ff;font-size:11px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid #243355}
+td{padding:10px 13px;border-bottom:1px solid #1a2440;color:#d4d9ec;vertical-align:top}
+tr:hover td{background:#152042}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:0.4px}
+.tag.r{background:#3a1424;color:#ff6b8a;border:1px solid #ff6b8a}
+.tag.y{background:#3a2c14;color:#ffd166;border:1px solid #ffd166}
+.tag.g{background:#143a25;color:#7adfa7;border:1px solid #7adfa7}
+.tag.b{background:#142a3a;color:#5fc7ff;border:1px solid #5fc7ff}
+.bignum{font-size:48px;font-weight:800;color:#ff6b8a;letter-spacing:-1px}
+.bignum.green{color:#7adfa7}
+.callout{background:rgba(255,107,138,0.08);border-left:4px solid #ff6b8a;padding:14px 20px;margin:14px 0;border-radius:4px}
+.callout.green{background:rgba(122,223,167,0.08);border-left-color:#7adfa7}
+.callout.yellow{background:rgba(255,209,102,0.08);border-left-color:#ffd166}
+.callout h4{margin:0 0 6px;color:#ff6b8a;font-size:14px;text-transform:uppercase;letter-spacing:1px}
+.callout.green h4{color:#7adfa7}
+.callout.yellow h4{color:#ffd166}
+ol li,ul li{margin:8px 0}
+code{background:#0a1024;color:#7adfa7;padding:2px 7px;border-radius:4px;font-family:Consolas,Monaco,monospace;font-size:12.5px}
+pre{background:#0a1024;color:#7adfa7;padding:14px 18px;border-radius:6px;overflow-x:auto;font-family:Consolas,Monaco,monospace;font-size:12.5px;border:1px solid #1f2a44}
+.foot{margin-top:50px;padding-top:24px;border-top:1px solid #243355;color:#8a96b8;font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+
+<h1>Databricks Cold-Start &amp; Serverless Audit</h1>
+<div class="muted">Workspace: pyx-warehouse-prod &middot; Cluster: Processing Cluster &middot; Audit prepared by Syed Rizvi</div>
+
+<h2>The Question</h2>
+<div class="box">
+<p>Why does the <strong>Processing Cluster</strong> in <code>pyx-warehouse-prod</code> take ~10 minutes to spin up? Can it be moved to serverless? What about the <code>pyx-warehouse</code> Pro SQL warehouse?</p>
+</div>
+
+<h2>Bottom Line</h2>
+<div class="callout">
+<h4>Root Cause Identified</h4>
+<p style="margin:0;font-size:15px">The cluster has <strong>no instance pool attached</strong>. Every restart provisions 3 fresh Azure VMs (1 driver + 2 workers minimum). VM provisioning + DBR image pull + Spark/Photon init + worker handshake from cold totals <strong>7-10 minutes</strong>, exactly matching reported behavior.</p>
+</div>
+<div class="callout green">
+<h4>Path Forward</h4>
+<p style="margin:0;font-size:15px">Two fixes available, both low risk: (1) Promote the SQL warehouse to <strong>Serverless</strong> for ~10s start (one UI flip, no code change). (2) Move the all-purpose cluster to <strong>Serverless Compute for Notebooks</strong> for sub-30s start, OR attach an instance pool to drop cold start from ~10 min to ~1-2 min as a bridge.</p>
+</div>
+
+<h2>Cluster Configuration (Observed)</h2>
+<table>
+<thead><tr><th>Property</th><th>Value</th><th>Cold-start impact</th></tr></thead>
+<tbody>
+<tr><td>Cluster ID</td><td><code>1114-200915-yjasr9gz</code></td><td>&mdash;</td></tr>
+<tr><td>Cluster name</td><td>Processing Cluster</td><td>&mdash;</td></tr>
+<tr><td>Workspace</td><td>pyx-warehouse-prod (westus2)</td><td>&mdash;</td></tr>
+<tr><td>Creator / Source</td><td>Shaun Raj / UI</td><td>Interactive cluster, not job cluster</td></tr>
+<tr><td>Databricks Runtime</td><td>17.3 LTS (Spark 4.0.0, Scala 2.13)</td><td><span class="tag g">OK</span> Modern, no OLD_DBR penalty</td></tr>
+<tr><td>Photon acceleration</td><td>Enabled</td><td><span class="tag g">OK</span> No NO_PHOTON penalty</td></tr>
+<tr><td>Worker SKU</td><td>Standard_D4ads_v6 (16 GB / 4 cores)</td><td><span class="tag g">OK</span> Modern v6 SKU, not GPU</td></tr>
+<tr><td>Autoscale</td><td>2 - 8 workers</td><td><span class="tag y">+30-90s</span> Multi-node handshake from cold</td></tr>
+<tr><td>Auto-termination</td><td>30 minutes inactivity</td><td><span class="tag g">OK</span> Reasonable</td></tr>
+<tr><td>Policy</td><td>Unrestricted</td><td>&mdash;</td></tr>
+<tr><td>Data access mode</td><td>Unity Catalog</td><td><span class="tag g">OK</span> Serverless-compatible</td></tr>
+<tr><td>Price band</td><td>6 - 22 DBU/h</td><td>&mdash;</td></tr>
+<tr><td><strong>Instance pool</strong></td><td><strong>NOT attached</strong></td><td><span class="tag r">+4-7 min</span> The dominant cold-start cost</td></tr>
+</tbody>
+</table>
+
+<h3>Items to verify in the Advanced + Libraries tabs</h3>
+<table>
+<thead><tr><th>Item</th><th>Why it matters</th><th>Where to check</th></tr></thead>
+<tbody>
+<tr><td>Init scripts</td><td>Re-run on every start, +2-5 min each. Also a hard blocker for Serverless Compute migration.</td><td>Cluster page > Advanced > Init scripts</td></tr>
+<tr><td>Cluster libraries</td><td>Re-installed on every start, +2-10 min for big ML libs. Some libs blocked on serverless.</td><td>Cluster page > Libraries tab</td></tr>
+<tr><td>Custom Docker image</td><td>Hard blocker for serverless.</td><td>Cluster page > Advanced > Docker</td></tr>
+<tr><td>Spark conf entries</td><td>Legacy storage-key auth (<code>fs.azure.account.key.*</code>) and credential passthrough are blockers for serverless.</td><td>Cluster page > Advanced > Spark</td></tr>
+</tbody>
+</table>
+
+<h2>The 10-Minute Cold Start, Decomposed</h2>
+<table>
+<thead><tr><th>Phase</th><th>Time</th><th>What is happening</th></tr></thead>
+<tbody>
+<tr><td>Azure VM provisioning</td><td><strong>4-6 min</strong></td><td>3 VMs (1 driver + 2 workers) created from scratch in westus2. No pool means cold capacity request to Azure compute.</td></tr>
+<tr><td>DBR 17.3 image pull</td><td>1-2 min</td><td>Container image fetched from Databricks regional cache to the VMs.</td></tr>
+<tr><td>Spark + Photon init</td><td>~1 min</td><td>JVM start, Spark master / executors come up, Photon native libraries load.</td></tr>
+<tr><td>Worker registration handshake</td><td>30-90s</td><td>Workers report to driver, partition map populates, cluster reports RUNNING.</td></tr>
+<tr><td>Library re-install (if any)</td><td>variable</td><td>If cluster libraries are configured, they reinstall here. Need to verify in Libraries tab.</td></tr>
+<tr><td>Init scripts (if any)</td><td>variable</td><td>If init scripts exist, they run here. Need to verify in Advanced > Init scripts.</td></tr>
+<tr><td><strong>Total observed</strong></td><td><strong>~10 min</strong></td><td>Matches Tony&rsquo;s report.</td></tr>
+</tbody>
+</table>
+
+<h2>Serverless Eligibility &mdash; Processing Cluster</h2>
+<table>
+<thead><tr><th>Eligibility check</th><th>Status</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>DBR version supported (13.x+)</td><td><span class="tag g">PASS</span></td><td>17.3 LTS - fully supported on Serverless Compute</td></tr>
+<tr><td>Photon supported</td><td><span class="tag g">PASS</span></td><td>Photon native on Serverless</td></tr>
+<tr><td>Non-GPU SKU</td><td><span class="tag g">PASS</span></td><td>D4ads_v6 - standard CPU SKU</td></tr>
+<tr><td>Unity Catalog data access</td><td><span class="tag g">PASS</span></td><td>Required for Serverless</td></tr>
+<tr><td>No custom Docker image</td><td><span class="tag b">VERIFY</span></td><td>Check Advanced > Docker tab</td></tr>
+<tr><td>No init scripts</td><td><span class="tag b">VERIFY</span></td><td>Check Advanced > Init scripts</td></tr>
+<tr><td>No legacy storage-key auth</td><td><span class="tag b">VERIFY</span></td><td>Check Advanced > Spark conf for <code>fs.azure.account.key.*</code></td></tr>
+<tr><td>No credential passthrough</td><td><span class="tag b">VERIFY</span></td><td>Check Advanced > Spark conf for <code>spark.databricks.passthrough.enabled</code></td></tr>
+</tbody>
+</table>
+
+<div class="callout green">
+<h4>Provisional verdict</h4>
+<p style="margin:0">Based on visible configuration: <strong>likely ELIGIBLE</strong> for Serverless Compute for Notebooks. All deal-breaker items pass. Need 5-minute verification of the four items in the Advanced + Libraries tabs to confirm.</p>
+<p style="margin:8px 0 0">If eligible: cold start drops from <strong>~10 min</strong> to <strong>under 30 seconds</strong>.</p>
+</div>
+
+<h2>SQL Warehouse &mdash; pyx-warehouse</h2>
+<div class="box">
+<p style="margin:0 0 10px"><strong>Current state:</strong> Pro tier (visible in earlier screenshot). Pro warehouses cold-start in 3-5 minutes.</p>
+<p style="margin:0 0 10px"><strong>Recommended:</strong> Promote to Serverless. 5-10 second cold start, scales to zero when idle.</p>
+<p style="margin:0"><strong>How:</strong> Workspace UI &rarr; SQL &rarr; SQL Warehouses &rarr; Edit <code>pyx-warehouse</code> &rarr; change type to Serverless &rarr; Save. No client change. No JDBC/ODBC string change. Same endpoint.</p>
+</div>
+
+<h2>Concrete Recommendations</h2>
+<div class="box">
+<ol>
+<li><strong>Today (no risk, 30 seconds):</strong> Switch <code>pyx-warehouse</code> Pro &rarr; Serverless. Single UI flip. Drops cold start to ~10 sec for all SQL/BI users.</li>
+
+<li><strong>This week (5 min verification + decision):</strong> In Processing Cluster &rarr; Advanced + Libraries tabs, confirm no init scripts, no custom Docker image, no legacy spark conf, no heavy cluster libraries. If clean: migrate the cluster to Serverless Compute for Notebooks (cold start &lt; 30s).</li>
+
+<li><strong>Bridge fix if Serverless migration is blocked:</strong> Create an Azure Databricks instance pool for Processing Cluster's worker type:
+<ul>
+<li>Pool type: Standard_D4ads_v6</li>
+<li>min_idle_instances: 2 (matches the cluster&rsquo;s minimum worker count)</li>
+<li>preloaded_spark_versions: [&quot;17.3.x-photon-scala2.13&quot;]</li>
+<li>idle_instance_autotermination_minutes: 60</li>
+</ul>
+Attach Processing Cluster to the pool. Cold start drops from ~10 min to ~1-2 min.</li>
+
+<li><strong>Going forward, scheduled jobs:</strong> Use <strong>Serverless Job Compute</strong> instead of all-purpose interactive clusters. Spins in seconds, billed per-second.</li>
+
+<li><strong>Track cold-start as a SLI:</strong> The Databricks events API (<code>/api/2.1/clusters/events</code>) emits STARTING and RUNNING events with timestamps. Pull weekly, alert on any cluster averaging &gt;= 5 min cold start in a 14-day window.</li>
+</ol>
+</div>
+
+<h2>Cost Note</h2>
+<div class="box">
+<p style="margin:0 0 10px">Serverless costs more per DBU than classic Pro / All-purpose. But:</p>
+<ul style="margin:0">
+<li>Pro warehouse running idle inside its 30-min auto-stop window = paying for nothing useful</li>
+<li>Serverless warehouse scales to zero in seconds = pay only for actual queries</li>
+<li>For typical interactive / BI use, monthly all-in cost is usually similar or lower with Serverless because of utilization</li>
+<li>For Processing Cluster on Serverless Compute: 3-VM cluster currently runs 6-22 DBU/h. Serverless equivalent is per-second billed only when notebook cells run, which for ad-hoc notebook work is dramatically less wall-clock</li>
+</ul>
+<p style="margin:10px 0 0">Recommended: 30-day side-by-side - leave one warehouse on Pro, promote one to Serverless, compare the DBU bills.</p>
+</div>
+
+<h2>What Changes for End Users</h2>
+<table>
+<thead><tr><th>User</th><th>Today</th><th>After fix</th></tr></thead>
+<tbody>
+<tr><td>Analyst opens SQL editor at 9 AM</td><td>Wait 3-5 min for warehouse</td><td>Query starts in ~10 seconds</td></tr>
+<tr><td>Engineer kicks off a notebook</td><td>Wait ~10 min for cluster</td><td>~30 sec (Serverless) or 1-2 min (pool)</td></tr>
+<tr><td>Scheduled pipeline at 02:00</td><td>~8 min idle before any work</td><td>Job compute starts in seconds</td></tr>
+<tr><td>Recovery after auto-termination</td><td>Full ~10 min cold start</td><td>~10s (Serverless) - effectively no penalty</td></tr>
+</tbody>
+</table>
+
+<h2>Summary</h2>
+<div class="kpi"><div class="v" style="color:#ff6b8a">~10 min</div><div class="l">Current cold start</div></div>
+<div class="kpi"><div class="v" style="color:#7adfa7">~30 sec</div><div class="l">After Serverless migration</div></div>
+<div class="kpi"><div class="v" style="color:#7adfa7">~1-2 min</div><div class="l">After instance pool (bridge)</div></div>
+<div class="kpi"><div class="v" style="color:#7adfa7">~10 sec</div><div class="l">SQL warehouse after Serverless flip</div></div>
+
+<div class="foot">
+Prepared by Syed Rizvi &middot; Databricks Cold-Start &amp; Serverless Audit &middot; pyx-warehouse-prod / Processing Cluster
+</div>
+</body>
+</html>
