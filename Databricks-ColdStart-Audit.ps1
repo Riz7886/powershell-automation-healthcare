@@ -4,7 +4,9 @@ param(
     [string]$OutputFolder = "$env:USERPROFILE\Documents\Databricks-Audit",
     [int]$EventLookbackDays = 14,
     [switch]$SkipModuleInstall,
-    [switch]$IncludeAllSubs
+    [switch]$SingleSubOnly,
+    [string]$PersonalAccessToken,
+    [switch]$Verbose
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,27 +42,68 @@ function Ensure-Login {
     }
 }
 
+$script:CachedToken = $null
+$script:CachedTokenExpiry = [DateTime]::MinValue
+
 function Get-DbrToken {
-    $t = Get-AzAccessToken -ResourceUrl '2ff814a6-3304-4ab8-85cb-cd0e6f879c1d' -ErrorAction Stop
-    if ($t -is [string]) { return $t }
-    if ($t.Token -is [System.Security.SecureString]) {
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($t.Token)
-        try { return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
-        finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    if ($PersonalAccessToken) { return $PersonalAccessToken }
+    if ($script:CachedToken -and ([DateTime]::UtcNow -lt $script:CachedTokenExpiry)) { return $script:CachedToken }
+    $resources = @('https://databricks.azure.net/','2ff814a6-3304-4ab8-85cb-cd0e6f879c1d')
+    $cmd = Get-Command Get-AzAccessToken -ErrorAction Stop
+    $supportsSecure = $cmd.Parameters.ContainsKey('AsSecureString')
+    foreach ($r in $resources) {
+        try {
+            $params = @{ ResourceUrl = $r; ErrorAction = 'Stop' }
+            if ($supportsSecure) { $params['AsSecureString'] = $false }
+            $t = Get-AzAccessToken @params
+            $tok = $null
+            if ($t -is [string]) { $tok = $t }
+            elseif ($null -ne $t.Token) {
+                if ($t.Token -is [System.Security.SecureString]) {
+                    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($t.Token)
+                    try { $tok = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+                    finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+                } else { $tok = $t.Token.ToString() }
+            }
+            if ($tok) {
+                $script:CachedToken = $tok
+                $script:CachedTokenExpiry = [DateTime]::UtcNow.AddMinutes(45)
+                return $tok
+            }
+        } catch {
+            Write-Host ("    token via " + $r + " failed: " + $_.Exception.Message) -ForegroundColor DarkYellow
+        }
     }
-    return $t.Token
+    throw "Could not obtain Databricks AAD token. Pass -PersonalAccessToken <pat> instead."
 }
 
 function Invoke-DbrApi {
     param([string]$BaseUrl, [string]$Path, [string]$Method = 'GET', $Body)
-    $token = Get-DbrToken
+    try { $token = Get-DbrToken } catch { Write-Host ("    " + $_.Exception.Message) -ForegroundColor Red; return $null }
     $headers = @{ Authorization = "Bearer $token"; 'Content-Type' = 'application/json' }
     $uri = "https://$BaseUrl$Path"
-    $params = @{ Method = $Method; Uri = $uri; Headers = $headers; ErrorAction = 'Stop'; TimeoutSec = 60 }
+    $params = @{ Method = $Method; Uri = $uri; Headers = $headers; ErrorAction = 'Stop'; TimeoutSec = 60; UseBasicParsing = $true }
     if ($Body) { $params['Body'] = (ConvertTo-Json -InputObject $Body -Depth 10 -Compress) }
-    try { return Invoke-RestMethod @params }
-    catch {
-        Write-Warning "API $Method $uri failed: $($_.Exception.Message)"
+    try {
+        $r = Invoke-RestMethod @params
+        if ($Verbose) { Write-Host ("    OK  " + $Method + " " + $Path) -ForegroundColor DarkGray }
+        return $r
+    } catch {
+        $status = $null
+        try { if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode } } catch {}
+        $msg = $_.Exception.Message
+        $body = ''
+        try {
+            if ($_.Exception.Response) {
+                $stream = $_.Exception.Response.GetResponseStream()
+                if ($stream) {
+                    $reader = New-Object System.IO.StreamReader($stream)
+                    $body = $reader.ReadToEnd()
+                    if ($body.Length -gt 240) { $body = $body.Substring(0,240) + '...' }
+                }
+            }
+        } catch {}
+        Write-Host ("    FAIL " + $Method + " " + $Path + "  status=" + $status + "  " + $msg + "  body=" + $body) -ForegroundColor Red
         return $null
     }
 }
@@ -246,12 +289,20 @@ Ensure-Modules
 Ensure-Login
 
 if (-not $SubscriptionIds -or $SubscriptionIds.Count -eq 0) {
-    if ($IncludeAllSubs) {
+    if ($SingleSubOnly) {
+        $SubscriptionIds = @((Get-AzContext).Subscription.Id)
+    } else {
         $tenant = (Get-AzContext).Tenant.Id
         $SubscriptionIds = (Get-AzSubscription -TenantId $tenant -ErrorAction Stop | Where-Object { $_.State -eq 'Enabled' }).Id
-    } else {
-        $SubscriptionIds = @((Get-AzContext).Subscription.Id)
     }
+}
+Write-Host ""
+Write-Host ("Scanning " + $SubscriptionIds.Count + " subscription(s)") -ForegroundColor Cyan
+if ($PersonalAccessToken) {
+    Write-Host "Auth mode: Personal Access Token" -ForegroundColor Cyan
+} else {
+    Write-Host "Auth mode: AAD token (Connect-AzAccount identity)" -ForegroundColor Cyan
+    Write-Host "  if cluster/warehouse calls return 0, re-run with -PersonalAccessToken <pat>" -ForegroundColor DarkYellow
 }
 
 if (-not (Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null }
