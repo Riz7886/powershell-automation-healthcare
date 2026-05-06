@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Datadog Health Audit - Runbook</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background:#fff; color:#1f2937; padding:40px 32px; line-height:1.6; max-width:900px; margin:0 auto; }
+h1 { font-size:22px; margin-bottom:6px; color:#1d2030; }
+h2 { font-size:15px; margin:24px 0 10px; padding-bottom:6px; border-bottom:1px solid #e5e7eb; color:#1d2030; letter-spacing:0.3px; }
+.sub { color:#6b7280; font-size:13px; margin-bottom:20px; }
+pre { background:#0f1729; color:#e5e7eb; padding:14px 16px; border-radius:6px; font-family:Consolas,Menlo,monospace; font-size:12.5px; overflow-x:auto; margin:8px 0 14px; }
+code { background:#f3f4f6; padding:2px 7px; border-radius:3px; font-family:Consolas,Menlo,monospace; font-size:12.5px; }
+ol, ul { margin:6px 0 14px 22px; }
+li { margin-bottom:4px; }
+table { width:100%; border-collapse:collapse; margin:8px 0 16px; font-size:13px; }
+th { text-align:left; background:#f9fafb; padding:9px 12px; border-bottom:1px solid #e5e7eb; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; }
+td { padding:9px 12px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+.warn { background:#fef3c7; border-left:3px solid #d97706; padding:10px 14px; margin:10px 0; font-size:13px; color:#92400e; border-radius:3px; }
+.footer { margin-top:36px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:11px; color:#9ca3af; text-align:center; }
+</style>
+</head><body>
+
+<h1>Datadog Health Audit - Runbook</h1>
+<div class="sub">One PowerShell script. Pulls all monitors, hosts, synthetic tests, and APM services from Datadog. Identifies anything in "No Data" state or otherwise not reporting. Generates an HTML report with full Databricks breakdown.</div>
+
+<h2>1. Prerequisites</h2>
+<ul>
+  <li><strong>Datadog API Key</strong> - Datadog UI &raquo; Personal Settings &raquo; API Keys &raquo; create or copy an existing one</li>
+  <li><strong>Datadog Application Key</strong> - Datadog UI &raquo; Personal Settings &raquo; Application Keys &raquo; create one with at least <code>monitors_read</code>, <code>hosts_read</code>, <code>synthetics_read</code>, and <code>apm_service_catalog_read</code> scopes</li>
+  <li><strong>Datadog Site</strong> - the URL fragment between <code>app.</code> and <code>datadoghq.com</code> in the address bar (e.g. <code>us3</code>, <code>us5</code>, <code>eu</code>). Default in script: <code>us3.datadoghq.com</code></li>
+  <li><strong>PowerShell 5.1 or 7+</strong> on Windows. No additional modules needed - script uses built-in <code>Invoke-RestMethod</code></li>
+</ul>
+
+<h2>2. Run the audit (interactive prompts for keys)</h2>
+<pre>powershell.exe -ExecutionPolicy Bypass -File C:\Users\PC\Downloads\PYX-scripts\Datadog-Audit.ps1</pre>
+<p>Script will prompt for the API key + Application key (masked input). HTML report opens automatically when complete.</p>
+
+<h2>3. Run with keys passed in (no prompt)</h2>
+<pre>powershell.exe -ExecutionPolicy Bypass -File C:\Users\PC\Downloads\PYX-scripts\Datadog-Audit.ps1 -ApiKey "&lt;DD_API_KEY&gt;" -AppKey "&lt;DD_APP_KEY&gt;"</pre>
+
+<h2>4. Run with custom site / thresholds</h2>
+<pre>powershell.exe -ExecutionPolicy Bypass -File C:\Users\PC\Downloads\PYX-scripts\Datadog-Audit.ps1 -Site "us3.datadoghq.com" -StaleMinutes 60 -NoTracesHours 8</pre>
+
+<h2>5. Parameters</h2>
+<table>
+<thead><tr><th>Parameter</th><th>Default</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>-ApiKey</code></td><td>(prompt)</td><td>Datadog DD-API-KEY</td></tr>
+<tr><td><code>-AppKey</code></td><td>(prompt)</td><td>Datadog DD-APPLICATION-KEY</td></tr>
+<tr><td><code>-Site</code></td><td><code>us3.datadoghq.com</code></td><td>Datadog data center hostname</td></tr>
+<tr><td><code>-StaleMinutes</code></td><td><code>30</code></td><td>Hosts not reporting for this many minutes are flagged stale</td></tr>
+<tr><td><code>-NoTracesHours</code></td><td><code>4</code></td><td>APM services with zero traces in this window are flagged</td></tr>
+<tr><td><code>-OutDir</code></td><td><code>%USERPROFILE%\Desktop\datadog-audit</code></td><td>Where the HTML + JSON land</td></tr>
+</tbody>
+</table>
+
+<h2>6. Output</h2>
+<table>
+<thead><tr><th>File</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td><code>datadog-audit-&lt;timestamp&gt;.html</code></td><td>Full visual report - opens in browser, KPI cards + tables for No-Data monitors, stale hosts, paused synthetics, silent APM services, full Databricks breakdown</td></tr>
+<tr><td><code>datadog-audit-&lt;timestamp&gt;.json</code></td><td>Same data in machine-readable form for further analysis</td></tr>
+</tbody>
+</table>
+
+<h2>7. Sections in the HTML report</h2>
+<ol>
+  <li><strong>Monitors in No-Data state</strong> - the most common cause of UI tiles showing blank. Includes the metric query for each so root cause is visible at a glance.</li>
+  <li><strong>Hosts not reporting</strong> - Datadog Agent stopped checking in. Causes: agent service stopped, host shut down, network/auth break, decommissioned but not pruned.</li>
+  <li><strong>Paused synthetic tests</strong> - manually paused so producing no data while paused.</li>
+  <li><strong>APM services with no traces</strong> - registered in service catalog but no incoming traces in the window.</li>
+  <li><strong>Databricks monitors - full breakdown</strong> - every monitor tagged or named Databricks/DBX, with current state (Working / Alert / Warn / No Data) and the metric query so each one can be diagnosed individually.</li>
+</ol>
+
+<h2>8. Common root causes for "No Data" monitors</h2>
+<table>
+<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix path</th></tr></thead>
+<tbody>
+<tr><td>Auto-created monitors all No Data</td><td>Cloud integration (AWS/Azure/GCP) lost API permission or was reconfigured</td><td>Datadog &raquo; Integrations &raquo; verify cloud account, re-authorize</td></tr>
+<tr><td>Databricks monitors all No Data</td><td>Databricks integration broken or workspace metric forwarding disabled</td><td>Datadog &raquo; Integrations &raquo; Databricks &raquo; check workspace tokens + system tables enabled</td></tr>
+<tr><td>App Service / SQL monitors No Data</td><td>Azure integration scope changed or sub removed</td><td>Datadog &raquo; Integrations &raquo; Azure &raquo; verify subscription mapping</td></tr>
+<tr><td>Custom-metric monitor No Data</td><td>Application stopped emitting the metric (deploy, refactor, env-var change)</td><td>Read the Query column in the report - find that metric in Datadog Metrics Explorer to confirm it has stopped publishing</td></tr>
+<tr><td>Single-host monitor No Data</td><td>Host decommissioned but monitor still scoped to it</td><td>Update monitor scope or delete</td></tr>
+</tbody>
+</table>
+
+<div class="warn">
+<strong>Keys are sensitive.</strong> Don't paste them into chat, screenshots, or commits. Use the interactive prompt (default) or set as environment variables and reference via <code>$env:DD_API_KEY</code>.
+</div>
+
+<div class="footer">
+Datadog Health Audit Runbook &middot; Author: Syed Rizvi
+</div>
+
+</body></html>
