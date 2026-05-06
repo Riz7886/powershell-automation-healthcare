@@ -1,0 +1,12 @@
+Copy-Item "D:\OTC\OpenText\Core Archive Connector\java\bin\s4pceotcac_new.p12" "E:\OTC\OpenText\Core Archive Connector\java\bin\s4pceotcac.p12" -Force
+
+----------------------------------------------------------
+
+
+Stop-Service otacc -Force; Start-Sleep 5; Get-Process java,javaw -EA SilentlyContinue | Stop-Process -Force; Start-Sleep 3; Start-Service otacc; Start-Sleep 20; (Get-Service otacc).Status
+
+
+-------------------------------------------------------------------------------------------
+
+
+& "E:\OTC\OpenText\Core Archive Connector\java\bin\keytool.exe" -list -v -keystore "E:\OTC\OpenText\Core Archive Connector\java\bin\s4pceotcac.p12" -storetype PKCS12 -storepass s4hpce | Select-String 'Owner|Valid from'
