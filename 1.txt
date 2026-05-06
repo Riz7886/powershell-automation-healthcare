@@ -1,0 +1,30 @@
+Hi Tony,
+
+Investigated. There are 36 monitors in No-Data state out of 51 total (15 are working, 0 actively alerting - so this is purely a data-pipeline issue, not real incidents).
+
+Four distinct root causes:
+
+  1. Azure integration broken - 16 auto-created monitors stopped getting data
+     on Dec 10 2025 (single batch timestamp, indicates an integration cutover).
+     Fix: re-authorize Azure tenant in Datadog Integrations.
+
+  2. Datadog's official Databricks integration broken - 8 monitors with
+     hybrid:true tag using databricks.* metrics. Fix: check workspace token
+     and system tables in Datadog Integrations -> Databricks.
+
+  3. Custom Databricks collector partially broken - 5 monitors using
+     custom.databricks.* metrics. CPU High and Memory High work, others
+     don't, so the script is publishing some metrics but missing others.
+     Need to find the collector code and check what's failing silently.
+
+  4. MoveIT VMs (vm-moveit-auto, vm-moveit-xfr) not reporting - Datadog
+     Agent stopped on those hosts. SSH + systemctl restart should fix.
+
+Full HTML audit attached - has every monitor name, query, and tags so we
+can hand off chunks to whoever owns each integration.
+
+Will start with #1 (Azure) since it covers the most monitors. Plan to have
+all 4 buckets fixed by end of week.
+
+Thanks,
+Syed
