@@ -452,12 +452,16 @@ foreach ($p in $plan) {
     if ($DryRun) {
         Log "DryRun -- read-only validation only ($($p.MigrationType))"
         $preferredForThis = if ($PreferredTier -and $PreferredTier.ContainsKey($p.Classic)) { $PreferredTier[$p.Classic] } else { $null }
+        az account set --subscription $p.SubscriptionId --only-show-errors 2>$null | Out-Null
         if ($p.MigrationType -eq "AFD") {
             try {
-                $dryTest = Test-AzFrontDoorCdnProfileMigration -ResourceGroupName $p.ResourceGroup -ClassicResourceReferenceId $p.ClassicResourceId -ErrorAction Stop
-                $canM = if ($dryTest) { $dryTest.CanMigrate } else { $false }
-                $defS = if ($dryTest -and $dryTest.DefaultSku) { $dryTest.DefaultSku } else { "" }
-                $r.TestResult = "CanMigrate=$canM DefaultSku=$defS"
+                $cpJson = az network front-door show -g $p.ResourceGroup --name $p.Classic --only-show-errors 2>$null
+                if (-not $cpJson) { throw "Classic AFD profile $($p.Classic) not readable in $($p.SubscriptionName)/$($p.ResourceGroup)" }
+                $cpObj = $cpJson | ConvertFrom-Json
+                $migState = if ($cpObj.frontdoorMigrationState) { $cpObj.frontdoorMigrationState } else { "NotMigrated" }
+                $canM = ($migState -eq "NotMigrated")
+                if ($p.HasManagedRules -and -not $StripManagedRulesToForceStandard) { $defS = "Premium_AzureFrontDoor" } else { $defS = "Standard_AzureFrontDoor" }
+                $r.TestResult = "MigrationState=$migState CanMigrate=$canM DefaultSku=$defS"
                 if ($canM) {
                     $mismatchTag = ""
                     if ($preferredForThis -eq "Standard" -and $defS -like "Premium*") {
@@ -469,30 +473,33 @@ foreach ($p in $plan) {
                     Log "  PASS -- CanMigrate=True DefaultSku=$defS WAFs=$($p.WafPolicies.Count) BYOC=$($p.IsBYOC)$mismatchTag" "OK"
                     $r.Status = "dryrun-passed"
                 } else {
-                    Log "  FAIL -- CanMigrate=False ($defS)" "ERR"
+                    Log "  FAIL -- Already in migration state: $migState" "ERR"
                     $r.Status = "dryrun-failed"
-                    $r.Error = "Test cmdlet returned CanMigrate=False"
+                    $r.Error = "Already in migration state: $migState"
                 }
             } catch {
-                Log "  FAIL -- Test cmdlet error: $($_.Exception.Message)" "ERR"
+                Log "  FAIL -- $($_.Exception.Message)" "ERR"
                 $r.Status = "dryrun-failed"
                 $r.Error = $_.Exception.Message
             }
         } else {
             try {
-                $cdnProfile = Get-AzCdnProfile -ResourceGroupName $p.ResourceGroup -Name $p.Classic -ErrorAction Stop
-                $isMigratable = $cdnProfile.SkuName -in @("Standard_Microsoft","Standard_Verizon","Premium_Verizon","Standard_Akamai","Standard_ChinaCdn")
-                $r.TestResult = "Sku=$($cdnProfile.SkuName) Migratable=$isMigratable Endpoints=$($p.CdnEndpoints.Count)"
+                $cdnJson = az cdn profile show -g $p.ResourceGroup --name $p.Classic --only-show-errors 2>$null
+                if (-not $cdnJson) { throw "CDN profile $($p.Classic) not readable in $($p.SubscriptionName)/$($p.ResourceGroup)" }
+                $cdnObj = $cdnJson | ConvertFrom-Json
+                $skuName = if ($cdnObj.sku -and $cdnObj.sku.name) { $cdnObj.sku.name } else { "" }
+                $isMigratable = $skuName -in @("Standard_Microsoft","Standard_Verizon","Premium_Verizon","Standard_Akamai","Standard_ChinaCdn")
+                $r.TestResult = "Sku=$skuName Migratable=$isMigratable Endpoints=$($p.CdnEndpoints.Count)"
                 if ($isMigratable) {
-                    Log "  PASS -- CDN classic SKU $($cdnProfile.SkuName) migratable, $($p.CdnEndpoints.Count) endpoint(s)" "OK"
+                    Log "  PASS -- CDN classic SKU $skuName migratable, $($p.CdnEndpoints.Count) endpoint(s)" "OK"
                     $r.Status = "dryrun-passed"
                 } else {
-                    Log "  FAIL -- SKU $($cdnProfile.SkuName) not eligible for AFD migration" "ERR"
+                    Log "  FAIL -- SKU $skuName not eligible for AFD migration" "ERR"
                     $r.Status = "dryrun-failed"
-                    $r.Error = "Non-migratable CDN SKU: $($cdnProfile.SkuName)"
+                    $r.Error = "Non-migratable CDN SKU: $skuName"
                 }
             } catch {
-                Log "  FAIL -- CDN profile fetch error: $($_.Exception.Message)" "ERR"
+                Log "  FAIL -- $($_.Exception.Message)" "ERR"
                 $r.Status = "dryrun-failed"
                 $r.Error = $_.Exception.Message
             }
