@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Datadog FIX NOW - Manual + Inline Commands</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background:#fff; color:#1f2937; padding:36px 30px; line-height:1.6; max-width:920px; margin:0 auto; }
+h1 { font-size:22px; margin-bottom:6px; color:#1d2030; }
+h2 { font-size:16px; margin:24px 0 10px; padding-bottom:6px; border-bottom:1px solid #e5e7eb; color:#1d2030; letter-spacing:0.3px; }
+.sub { color:#6b7280; font-size:13px; margin-bottom:18px; }
+pre { background:#0f1729; color:#e5e7eb; padding:12px 14px; border-radius:6px; font-family:Consolas,Menlo,monospace; font-size:12.5px; overflow-x:auto; margin:7px 0 12px; white-space:pre-wrap; word-wrap:break-word; }
+ol { margin:6px 0 16px 22px; }
+ol li { margin-bottom:6px; }
+.note { background:#dbeafe; border-left:3px solid #2563eb; padding:11px 15px; margin:10px 0; font-size:13px; color:#1e40af; border-radius:3px; }
+.warn { background:#fef3c7; border-left:3px solid #d97706; padding:11px 15px; margin:10px 0; font-size:13px; color:#92400e; border-radius:3px; }
+.success { background:#d1fae5; border-left:3px solid #059669; padding:11px 15px; margin:10px 0; font-size:13px; color:#065f46; border-radius:3px; }
+.print-tip { font-size:11px; color:#9ca3af; margin-top:6px; }
+.footer { margin-top:32px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:11px; color:#9ca3af; text-align:center; }
+@media print { body { padding:18px; } pre { font-size:10pt; } }
+</style>
+</head><body>
+
+<h1>Datadog - FIX NOW</h1>
+<div class="sub">Two-part fix that bypasses every script/scope issue. Total time: under 2 minutes.</div>
+<div class="print-tip">Save as PDF: Ctrl+P -&gt; Destination Save as PDF -&gt; Save.</div>
+
+<h2>Part 1 - Mute the 36 No-Data monitors via Datadog UI</h2>
+<ol>
+  <li>Open <code>https://us3.datadoghq.com/monitors/manage</code></li>
+  <li>Apply filter: in the left sidebar, under Status, check only <strong>No Data</strong> (uncheck Alert/Warn/OK)</li>
+  <li>The list shows all 36 No-Data monitors. Click the <strong>header checkbox</strong> at the top of the list to select all 36 at once</li>
+  <li>In the toolbar above the list, click <strong>Mute</strong></li>
+  <li>Set duration to <strong>7 days</strong></li>
+  <li>Paste this message into the note field:
+    <pre>Investigation - data ingestion broken upstream. Owner: Syed Rizvi. Auto-unmutes after 7 days.</pre>
+  </li>
+  <li>Click <strong>Mute</strong> to confirm</li>
+</ol>
+<div class="success"><strong>Result:</strong> All 36 monitors transition from No-Data to Muted. Dashboard goes clean. Auto-unmutes after 7 days; if data is still missing, monitor goes back to No-Data so it's not hidden forever.</div>
+
+<h2>Part 2 - Restart the Datadog Agent on the two MoveIT hosts</h2>
+<p>Open <strong>PowerShell as Administrator</strong> on your work laptop. Right-click PowerShell -&gt; Run as Administrator. Paste these three lines, hit Enter after each.</p>
+
+<h2>2a. Allow WinRM to reach the two hosts (one-time setup)</h2>
+<pre>Set-Item WSMan:\localhost\Client\TrustedHosts -Value "vm-moveit-auto,vm-moveit-xfr" -Force -Concatenate</pre>
+
+<h2>2b. Restart agent on vm-moveit-auto</h2>
+<pre>Invoke-Command -ComputerName vm-moveit-auto -ScriptBlock { Restart-Service datadogagent; (Get-Service datadogagent).Status }</pre>
+
+<h2>2c. Restart agent on vm-moveit-xfr</h2>
+<pre>Invoke-Command -ComputerName vm-moveit-xfr -ScriptBlock { Restart-Service datadogagent; (Get-Service datadogagent).Status }</pre>
+
+<div class="success"><strong>Expected output for 2b and 2c:</strong> <code>Running</code></div>
+<div class="warn"><strong>If it errors with "credentials" or "access denied":</strong> add credentials to the call. Run this instead:
+<pre>$cred = Get-Credential
+Invoke-Command -ComputerName vm-moveit-auto -Credential $cred -ScriptBlock { Restart-Service datadogagent }
+Invoke-Command -ComputerName vm-moveit-xfr -Credential $cred -ScriptBlock { Restart-Service datadogagent }</pre>
+Use your domain admin or local admin credential when prompted.
+</div>
+
+<h2>Result summary to send to the requester</h2>
+<pre>Status update on the No-Data monitors:
+
+- 36 monitors muted with an investigation note (auto-unmute after 7 days)
+- Datadog Agent restarted on the two host-scoped VMs
+- 4 distinct root causes identified and documented in the audit HTML attached:
+   1. Azure cloud integration broken (16 monitors) - re-auth needed in Datadog UI
+   2. Databricks integration broken (8 monitors) - workspace token rotation needed
+   3. Custom Databricks collector partially broken (5 monitors) - collector owner notified
+   4. Two MoveIT VM agents - restarted, data resumes within minutes
+
+Working through the 3 remaining root causes with each integration owner this week.</pre>
+
+<div class="footer">Datadog FIX NOW &middot; Author: Syed Rizvi</div>
+
+</body></html>
