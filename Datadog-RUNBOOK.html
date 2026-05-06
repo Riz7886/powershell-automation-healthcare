@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Datadog Audit + Fix - Runbook</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background:#fff; color:#1f2937; padding:42px 36px; line-height:1.55; max-width:980px; margin:0 auto; }
+h1 { font-size:24px; margin-bottom:6px; color:#1d2030; }
+h2 { font-size:17px; margin:28px 0 12px; padding-bottom:6px; border-bottom:1px solid #e5e7eb; color:#1d2030; letter-spacing:0.3px; }
+h3 { font-size:14px; margin:18px 0 8px; color:#374151; }
+.sub { color:#6b7280; font-size:13px; margin-bottom:24px; }
+pre { background:#0f1729; color:#e5e7eb; padding:14px 16px; border-radius:6px; font-family:Consolas,Menlo,monospace; font-size:12.5px; overflow-x:auto; margin:8px 0 14px; white-space:pre-wrap; word-wrap:break-word; }
+code { background:#f3f4f6; padding:2px 7px; border-radius:3px; font-family:Consolas,Menlo,monospace; font-size:12.5px; }
+ol, ul { margin:6px 0 14px 22px; }
+li { margin-bottom:5px; }
+table { width:100%; border-collapse:collapse; margin:8px 0 18px; font-size:12.5px; }
+th { text-align:left; background:#f9fafb; padding:9px 12px; border-bottom:1px solid #e5e7eb; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; }
+td { padding:9px 12px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+.warn { background:#fef3c7; border-left:3px solid #d97706; padding:11px 15px; margin:11px 0; font-size:13px; color:#92400e; border-radius:3px; }
+.success { background:#d1fae5; border-left:3px solid #059669; padding:11px 15px; margin:11px 0; font-size:13px; color:#065f46; border-radius:3px; }
+.note { background:#dbeafe; border-left:3px solid #2563eb; padding:11px 15px; margin:11px 0; font-size:13px; color:#1e40af; border-radius:3px; }
+.print-tip { font-size:11px; color:#9ca3af; margin-top:8px; }
+.footer { margin-top:42px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:11px; color:#9ca3af; text-align:center; }
+@media print { body { padding:18px; } pre { font-size:10pt; } }
+</style>
+</head><body>
+
+<h1>Datadog Audit + Fix - Runbook</h1>
+<div class="sub">Two-script workflow. Audit script identifies what's not reporting and why. Fix script auto-rotates Azure SP secret, restarts Datadog Agent on hosts via PSRemoting, schedules investigation downtimes on No-Data monitors. HTML reports for both.</div>
+<div class="print-tip">Tip: Save this page as PDF via Ctrl+P -&gt; "Save as PDF".</div>
+
+<h2>1. Files in this delivery</h2>
+<table>
+<thead><tr><th>File</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>Datadog-Audit.ps1</code></td><td>Read-only audit. Pulls monitors, hosts, synthetics, APM. Generates HTML report with No-Data breakdown + Databricks state table.</td></tr>
+<tr><td><code>Datadog-Fix.ps1</code></td><td>Active fix. Auto-rotates Azure SP secret, PSRemoting Datadog Agent restart, downtimes No-Data monitors with investigating note.</td></tr>
+<tr><td><code>Datadog-RUNBOOK.html</code></td><td>This document.</td></tr>
+</tbody>
+</table>
+
+<h2>2. Prerequisites</h2>
+<ul>
+  <li><strong>Datadog API Key</strong> - Org Settings -&gt; API Keys -&gt; copy any existing key (suggest <code>testing-auth</code> for low blast radius)</li>
+  <li><strong>Datadog Application Key</strong> - Org Settings -&gt; Application Keys -&gt; create or use one with broad read scope</li>
+  <li><strong>Datadog Site</strong> - default <code>us3.datadoghq.com</code></li>
+  <li><strong>PowerShell 5.1+ or 7+</strong> on Windows</li>
+  <li><strong>Az PowerShell module + login</strong> - required only if using <code>-RotateAzureSecrets</code> on the fix script. Run <code>Connect-AzAccount</code> first; identity needs <code>Application.ReadWrite.OwnedBy</code> or equivalent on the App Registration.</li>
+  <li><strong>PSRemoting from your workstation to the target hosts</strong> - required only if using <code>-AgentHosts</code> on the fix script</li>
+</ul>
+
+<h2>3. Audit script - usage</h2>
+
+<h3>3a. Run interactively (prompts for keys)</h3>
+<pre>powershell.exe -ExecutionPolicy Bypass -File C:\Users\SyedRizvi\Downloads\datadog-audit\Datadog-Audit.ps1</pre>
+
+<h3>3b. Run with keys passed in (no prompt)</h3>
+<pre>powershell.exe -ExecutionPolicy Bypass -File C:\Users\SyedRizvi\Downloads\datadog-audit\Datadog-Audit.ps1 -ApiKey "&lt;API_KEY&gt;" -AppKey "&lt;APP_KEY&gt;"</pre>
+
+<h3>3c. Audit parameters</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Default</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>-ApiKey</code></td><td>(prompt)</td><td>Datadog DD-API-KEY</td></tr>
+<tr><td><code>-AppKey</code></td><td>(prompt)</td><td>Datadog DD-APPLICATION-KEY</td></tr>
+<tr><td><code>-Site</code></td><td><code>us3.datadoghq.com</code></td><td>Datadog data center hostname</td></tr>
+<tr><td><code>-StaleMinutes</code></td><td><code>30</code></td><td>Hosts not reporting for this many minutes are flagged stale</td></tr>
+<tr><td><code>-NoTracesHours</code></td><td><code>4</code></td><td>APM services with zero traces in this window are flagged</td></tr>
+<tr><td><code>-OutDir</code></td><td><code>%USERPROFILE%\Desktop\datadog-audit</code></td><td>Where the HTML + JSON land</td></tr>
+</tbody>
+</table>
+
+<h3>3d. Audit output</h3>
+<table>
+<thead><tr><th>File</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td><code>datadog-audit-&lt;timestamp&gt;.html</code></td><td>Visual report. KPIs + tables for No-Data monitors (with full Query column), stale hosts, paused synthetics, silent APM, and the Databricks-tagged breakdown</td></tr>
+<tr><td><code>datadog-audit-&lt;timestamp&gt;.json</code></td><td>Same data in machine-readable form</td></tr>
+</tbody>
+</table>
+
+<h2>4. Fix script - usage</h2>
+
+<h3>4a. Full-auto fix (recommended)</h3>
+<pre>.\Datadog-Fix.ps1 -RotateAzureSecrets -MuteNoData -AgentHosts vm-moveit-auto,vm-moveit-xfr</pre>
+<p>Runs all auto-fixes: Azure SP secret rotation, agent restart on listed hosts, 7-day investigation downtime on every No-Data monitor.</p>
+
+<h3>4b. Preview without changing anything</h3>
+<pre>.\Datadog-Fix.ps1 -RotateAzureSecrets -MuteNoData -AgentHosts vm-moveit-auto,vm-moveit-xfr -DryRun</pre>
+<p>Same script, but every action is reported as DRYRUN - no secret rotation, no agent restart, no downtime created.</p>
+
+<h3>4c. Diagnose only (no fixes applied)</h3>
+<pre>.\Datadog-Fix.ps1</pre>
+<p>Pulls integration health + per-metric publish status. Reports only.</p>
+
+<h3>4d. Just restart the agents (no other actions)</h3>
+<pre>.\Datadog-Fix.ps1 -AgentHosts vm-moveit-auto,vm-moveit-xfr</pre>
+
+<h3>4e. Just clean the dashboard (downtime everything not reporting)</h3>
+<pre>.\Datadog-Fix.ps1 -MuteNoData</pre>
+
+<h3>4f. Just rotate Azure SP secret + push to Datadog</h3>
+<pre>.\Datadog-Fix.ps1 -RotateAzureSecrets</pre>
+
+<h3>4g. Fix script parameters</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Default</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>-ApiKey</code></td><td>(prompt)</td><td>Datadog DD-API-KEY</td></tr>
+<tr><td><code>-AppKey</code></td><td>(prompt)</td><td>Datadog DD-APPLICATION-KEY</td></tr>
+<tr><td><code>-Site</code></td><td><code>us3.datadoghq.com</code></td><td>Datadog data center hostname</td></tr>
+<tr><td><code>-AgentHosts</code></td><td>(none)</td><td>Comma-separated hostnames to restart Datadog Agent on via PSRemoting</td></tr>
+<tr><td><code>-AgentServiceName</code></td><td><code>datadogagent</code></td><td>Windows service name (Linux variant: <code>datadog-agent</code>)</td></tr>
+<tr><td><code>-MuteNoData</code></td><td><em>off</em></td><td>If set, schedules investigation downtimes on every No-Data monitor</td></tr>
+<tr><td><code>-MuteDays</code></td><td><code>7</code></td><td>Auto-uncover after this many days</td></tr>
+<tr><td><code>-MuteOwner</code></td><td><code>Syed Rizvi</code></td><td>Owner name embedded in the downtime message</td></tr>
+<tr><td><code>-RotateAzureSecrets</code></td><td><em>off</em></td><td>If set, rotates Azure SP client secret on every Azure tenant configured in Datadog and pushes the new secret back to Datadog</td></tr>
+<tr><td><code>-AzureSecretYears</code></td><td><code>2</code></td><td>Validity of the new SP secret</td></tr>
+<tr><td><code>-DryRun</code></td><td><em>off</em></td><td>Reports every action but doesn't perform any write</td></tr>
+<tr><td><code>-OutDir</code></td><td><code>%USERPROFILE%\Desktop\datadog-audit</code></td><td>Where the HTML lands</td></tr>
+</tbody>
+</table>
+
+<h3>4h. What gets fixed automatically</h3>
+<table>
+<thead><tr><th>Cluster</th><th>Auto-fix path</th><th>Required permissions</th></tr></thead>
+<tbody>
+<tr><td>Azure cloud integration broken</td><td>Add new client secret on the configured App Registration via Az PowerShell, push the new secret to Datadog via PUT <code>/api/v1/integration/azure</code></td><td>Az login + <code>Application.ReadWrite.OwnedBy</code> on the App Registration. Old secret is NOT removed - other consumers stay on the old secret.</td></tr>
+<tr><td>Agent down on host</td><td>PSRemoting <code>Stop-Service</code> + <code>Start-Service</code> on <code>datadogagent</code></td><td>WinRM access to host with admin rights to restart the service</td></tr>
+<tr><td>No-Data monitors flooding the dashboard</td><td>POST <code>/api/v1/downtime</code> with <code>monitor_id</code>, scope <code>*</code>, end = now + 7 days, message includes owner name + auto-uncover note</td><td>Datadog Application Key with <code>monitors_downtime</code> or unrestricted read/write</td></tr>
+</tbody>
+</table>
+
+<h3>4i. What is diagnose-only (manual click required)</h3>
+<table>
+<thead><tr><th>Cluster</th><th>Why not auto-fixed</th><th>Where to click</th></tr></thead>
+<tbody>
+<tr><td>Databricks integration broken</td><td>Workspace PAT rotation requires Databricks workspace admin auth, not in this script's scope</td><td>Datadog -&gt; Integrations -&gt; Databricks -&gt; expand failing workspace -&gt; "Update workspace token"</td></tr>
+<tr><td>Custom Databricks collector missing metric writes</td><td>Collector lives outside Datadog (notebook/script/Airflow) - can't be reached from API</td><td>The HTML report shows exactly which <code>custom.databricks.*</code> metric names stopped publishing. Grep the collector codebase for those metric names.</td></tr>
+</tbody>
+</table>
+
+<h3>4j. Fix script output</h3>
+<table>
+<thead><tr><th>File</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td><code>datadog-fix-&lt;timestamp&gt;.html</code></td><td>Fix report with KPIs (agents restarted, secrets rotated, downtimes scheduled, silent metrics identified) and tables for each step</td></tr>
+</tbody>
+</table>
+
+<h2>5. Recommended workflow</h2>
+<ol>
+  <li>Run <code>Datadog-Audit.ps1</code> first to confirm the picture (51 / 36 / 17 etc.)</li>
+  <li>Send the audit HTML attachment + summary email to the requester</li>
+  <li>Run <code>Datadog-Fix.ps1 -RotateAzureSecrets -MuteNoData -AgentHosts &lt;host1&gt;,&lt;host2&gt; -DryRun</code> first to preview</li>
+  <li>If the dry-run report looks correct, drop <code>-DryRun</code> and run for real</li>
+  <li>Wait 5-10 minutes for Azure metrics to start flowing again</li>
+  <li>Re-run <code>Datadog-Audit.ps1</code> - should show fewer No-Data monitors as data recovers</li>
+  <li>For Databricks workspace + custom collector remediation, click into the integrations UI per links in the fix report</li>
+  <li>Send the fix HTML to the requester as a follow-up</li>
+</ol>
+
+<h2>6. Common errors and fixes</h2>
+<table>
+<thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>403 on <code>/api/v1/hosts</code> or <code>/api/v1/synthetics/tests</code></td><td>Application Key lacks scope or user role lacks infrastructure-read permission</td><td>Script wraps each section in try/catch - it'll skip and continue. Other sections still produce data.</td></tr>
+<tr><td>"No Az PowerShell login"</td><td>Az PowerShell not authenticated</td><td>Run <code>Connect-AzAccount</code> in the same PowerShell session before re-running the fix script</td></tr>
+<tr><td>"App Registration not found in this tenant"</td><td>Active Az tenant doesn't match the tenant configured in Datadog Azure integration</td><td>Run <code>Connect-AzAccount -TenantId &lt;the_tenant_from_dd_config&gt;</code> first</td></tr>
+<tr><td>"Service 'datadogagent' not found" on a host</td><td>Datadog Agent not installed, or installed under a different service name</td><td>Pass <code>-AgentServiceName "datadog-agent"</code> for Linux-style installs, or install the agent first</td></tr>
+<tr><td>WinRM "host unreachable" on PSRemoting</td><td>WinRM disabled, or firewall blocks port 5985/5986</td><td><code>Test-WSMan &lt;host&gt;</code> to verify - if WinRM unavailable, restart agent via the host's own login (RDP/SSH) then unmute the monitor</td></tr>
+</tbody>
+</table>
+
+<div class="warn">
+<strong>Keys are sensitive.</strong> Do not paste API/App keys into chat, screenshots, commits, or logs. Use the interactive prompt (default) or set as environment variables and reference them in the script.
+</div>
+
+<div class="footer">
+Datadog Audit + Fix Runbook &middot; Author: Syed Rizvi
+</div>
+
+</body></html>
