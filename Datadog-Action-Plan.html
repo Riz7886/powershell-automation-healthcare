@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Datadog No-Data Investigation - Action Plan</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background:#fff; color:#1f2937; padding:36px 30px; line-height:1.6; max-width:980px; margin:0 auto; }
+h1 { font-size:24px; margin-bottom:6px; color:#1d2030; }
+h2 { font-size:17px; margin:28px 0 12px; padding-bottom:8px; border-bottom:2px solid #e5e7eb; color:#1d2030; }
+h3 { font-size:14px; margin:18px 0 8px; color:#374151; letter-spacing:0.3px; text-transform:uppercase; }
+.sub { color:#6b7280; font-size:13px; margin-bottom:24px; }
+pre { background:#0f1729; color:#e5e7eb; padding:12px 14px; border-radius:6px; font-family:Consolas,Menlo,monospace; font-size:12.5px; overflow-x:auto; margin:7px 0 12px; }
+code { background:#f3f4f6; padding:2px 7px; border-radius:3px; font-family:Consolas,Menlo,monospace; font-size:12.5px; }
+ol, ul { margin:6px 0 16px 24px; }
+li { margin-bottom:6px; }
+table { width:100%; border-collapse:collapse; margin:8px 0 18px; font-size:13px; }
+th { text-align:left; background:#f9fafb; padding:9px 12px; border-bottom:1px solid #e5e7eb; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#374151; }
+td { padding:9px 12px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+.cluster { border:1px solid #e5e7eb; border-radius:8px; padding:18px 22px; margin:14px 0; background:#fafafa; }
+.cluster h3 { color:#1d2030; font-size:15px; margin-top:0; text-transform:none; letter-spacing:0; }
+.cluster .meta { font-size:12px; color:#6b7280; margin:4px 0 10px; }
+.done { background:#d1fae5; border-left:4px solid #059669; padding:11px 15px; margin:10px 0; border-radius:3px; color:#065f46; font-size:13px; }
+.todo { background:#fef3c7; border-left:4px solid #d97706; padding:11px 15px; margin:10px 0; border-radius:3px; color:#92400e; font-size:13px; }
+.cosmetic { background:#dbeafe; border-left:4px solid #2563eb; padding:11px 15px; margin:10px 0; border-radius:3px; color:#1e40af; font-size:13px; }
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:18px 0; }
+.kpi { background:#f9fafb; padding:14px 18px; border-radius:6px; border:1px solid #e5e7eb; }
+.kpi .n { font-size:24px; font-weight:700; color:#1d2030; }
+.kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#6b7280; margin-top:3px; }
+.cluster-num { display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:50%; background:#1d2030; color:#fff; font-size:14px; font-weight:700; margin-right:8px; }
+.next-step { background:#fffaeb; border:1px solid #fde68a; padding:10px 14px; border-radius:4px; margin:8px 0; font-size:13px; }
+.next-step strong { color:#92400e; }
+a { color:#2563eb; text-decoration:none; }
+a:hover { text-decoration:underline; }
+.footer { margin-top:32px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:11px; color:#9ca3af; text-align:center; }
+@media print { body { padding:18px; } pre { font-size:10pt; } .cluster { page-break-inside:avoid; } }
+</style>
+</head><body>
+
+<h1>Datadog No-Data Investigation - Action Plan</h1>
+<div class="sub">Status as of audit run 2026-05-06. 51 monitors total, 36 in No-Data state, 0 actively alerting (data-pipeline issue, no real incidents). All 36 muted with a 7-day investigation downtime so the dashboard is clean while real fixes proceed.</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="n">51</div><div class="l">Total Monitors</div></div>
+  <div class="kpi"><div class="n" style="color:#dc2626;">36</div><div class="l">Were No-Data</div></div>
+  <div class="kpi"><div class="n" style="color:#059669;">36</div><div class="l">Now Muted</div></div>
+  <div class="kpi"><div class="n" style="color:#059669;">0</div><div class="l">Real Alerts Firing</div></div>
+</div>
+
+<h2>What is already done</h2>
+
+<div class="done">
+  <strong>1. All 36 No-Data monitors muted</strong> for 7 days with note "Investigation - data ingestion broken upstream. Owner: Syed Rizvi. Auto-unmutes after 7 days." Dashboard is now clean. Each muted monitor auto-uncovers when data resumes; if still broken at the 7-day mark, it goes back to No-Data and we know the root cause was not fixed.
+</div>
+
+<div class="done">
+  <strong>2. Datadog Agent restart requested on the two MoveIT VMs</strong> (vm-moveit-auto, vm-moveit-xfr). Maryfin will restart the "Datadog Agent" service in services.msc on each VM. Once restarted, those 6 host-scoped monitors will resume reporting data within 5 minutes.
+</div>
+
+<div class="done">
+  <strong>3. Audit HTML produced</strong> with full per-monitor diagnostic - monitor name, current state, query expression, tags, last-modified date. Attached separately.
+</div>
+
+<div class="cosmetic">
+  <strong>Important:</strong> The mute is cosmetic - it stops the noise on the dashboard. The 30 remaining monitors (clusters 1, 2, 3 below) still need their root causes addressed. The 6 MoveIT monitors are the only ones being truly fixed by today's actions.
+</div>
+
+<h2>What still needs fixing</h2>
+
+<div class="cluster">
+  <h3><span class="cluster-num">1</span>Azure cloud integration broken (16 monitors)</h3>
+  <div class="meta">All "auto-created" monitors using <code>azure.*</code> metrics. Last modified 2025-12-10 00:15 (single batch timestamp = single integration cutover that day). Includes: SQL Database CPU/Storage/DTU/Deadlocks, App Service CPU/Memory/Response Time/HTTP 5xx, NSG/RBAC/Privileged Role/Key Vault/Failed Auth audit monitors, PROD Network Packet Loss.</div>
+  <h3>Root cause</h3>
+  <p>Datadog's connection to Azure stopped working on 2025-12-10. Most likely the Service Principal client secret expired, or the SP lost RBAC permissions on the affected subscription, or the subscription mapping changed.</p>
+  <h3>Steps to fix</h3>
+  <ol>
+    <li>Open <a href="https://us3.datadoghq.com/integrations/azure" target="_blank">Datadog -&gt; Integrations -&gt; Azure</a></li>
+    <li>For each configured tenant, expand its row and check the "Errors" indicator - any tenant showing red errors is the broken one</li>
+    <li>For the broken tenant: confirm the Service Principal (client_id shown in Datadog) still exists in Azure Portal -&gt; Microsoft Entra ID -&gt; App Registrations</li>
+    <li>If the SP exists but the client secret expired, generate a new client secret on the App Registration (Certificates &amp; secrets -&gt; New client secret -&gt; 2 year expiry)</li>
+    <li>In Datadog, click "Update Application" on the failing tenant and paste the new client secret</li>
+    <li>Verify the SP still has "Monitoring Reader" role on every subscription you want Datadog to monitor: Azure Portal -&gt; Subscription -&gt; Access Control (IAM) -&gt; Role assignments -&gt; check the SP is listed with "Monitoring Reader"</li>
+    <li>Wait 5-10 minutes - Datadog should start receiving azure.* metrics again</li>
+    <li>Validate by querying any azure.* metric in Datadog Metrics Explorer and confirming data points are arriving</li>
+  </ol>
+  <div class="next-step"><strong>Owner:</strong> Whoever administers the Azure App Registrations + has Azure RBAC owner/admin on the affected subscriptions.</div>
+</div>
+
+<div class="cluster">
+  <h3><span class="cluster-num">2</span>Datadog Databricks integration broken (8 monitors)</h3>
+  <div class="meta">All using <code>databricks.*</code> (official integration) metrics with tag <code>hybrid:true env:prod service:databricks</code>. Last modified 2025-12-10 11:04 (separate batch from cluster 1). Includes: DBX Cluster CPU/Memory/DBU Spike, DBX SQL Warehouse Latency High / Queries Failing, DBX Jobs Failing/Queued, DBX API 5xx Errors, DBX API Latency High.</div>
+  <h3>Root cause</h3>
+  <p>The official Datadog Databricks integration stopped publishing on 2025-12-10. Most likely the Databricks workspace token (PAT) expired or was revoked, or the Databricks system tables required by the integration were disabled in the workspace, or the integration was mistakenly removed from a workspace.</p>
+  <h3>Steps to fix</h3>
+  <ol>
+    <li>Open <a href="https://us3.datadoghq.com/integrations/databricks" target="_blank">Datadog -&gt; Integrations -&gt; Databricks</a></li>
+    <li>Verify each configured workspace shows green "Last seen" indicator within the last 5 minutes - any workspace showing older than that is broken</li>
+    <li>For the broken workspace: in Databricks UI, generate a new Personal Access Token (User Settings -&gt; Developer -&gt; Access tokens -&gt; Generate new token, lifetime 90 days or longer)</li>
+    <li>Back in Datadog, click the workspace -&gt; "Update workspace token" -&gt; paste the new PAT</li>
+    <li>In Databricks workspace UI, verify system tables are enabled: Settings -&gt; Catalog -&gt; system catalog -&gt; ensure "compute", "billing", "access" schemas are enabled</li>
+    <li>Wait 10-15 minutes for the next data fetch cycle</li>
+    <li>Validate by querying <code>databricks.cluster.cpu_percent</code> in Datadog Metrics Explorer</li>
+  </ol>
+  <div class="next-step"><strong>Owner:</strong> Whoever has Databricks workspace admin rights + can generate Personal Access Tokens.</div>
+</div>
+
+<div class="cluster">
+  <h3><span class="cluster-num">3</span>Custom Databricks collector partially broken (5 monitors)</h3>
+  <div class="meta">Monitors using <code>custom.databricks.*</code> namespace (not the official integration). Last modified 2025-12-11 14:17. Specific silent metrics: <code>custom.databricks.api.5xx</code>, <code>custom.databricks.api.latency</code>, <code>custom.databricks.cluster.dbu</code>, <code>custom.databricks.jobs.failed</code>, <code>custom.databricks.sqlwarehouse.running</code>.</div>
+  <div class="meta">Note: <code>custom.databricks.cluster.cpu</code> and <code>custom.databricks.cluster.memory</code> ARE still publishing - so the collector is partially running, just dropped some metric writes.</div>
+  <h3>Root cause</h3>
+  <p>Whoever owns the custom collector pushed a code change that removed or broke 5 specific metric write calls while leaving the others working. Common cause: refactoring metric names, exception swallowing in metric writes, or feature-flagging some metrics off.</p>
+  <h3>Steps to fix</h3>
+  <ol>
+    <li>Identify the custom collector. It is one of: a Databricks notebook on a scheduled job, an Airflow DAG that pushes via dogstatsd or the Datadog API, or a Python/script-based agent on a server. Search the codebase / Databricks workspace / Airflow for the string <code>custom.databricks</code> - that finds the metric writer.</li>
+    <li>Once located, look at the recent code changes (git history or notebook revision history) for changes around 2025-12-11.</li>
+    <li>Compare the current code against a working version - look for these 5 metric names and confirm they are still being written:
+      <ul>
+        <li><code>custom.databricks.api.5xx</code></li>
+        <li><code>custom.databricks.api.latency</code></li>
+        <li><code>custom.databricks.cluster.dbu</code></li>
+        <li><code>custom.databricks.jobs.failed</code></li>
+        <li><code>custom.databricks.sqlwarehouse.running</code></li>
+      </ul>
+    </li>
+    <li>Restore the missing metric writes. Verify the collector is also catching exceptions - silent failures here are how this happened.</li>
+    <li>Re-run the collector once</li>
+    <li>Validate in Datadog Metrics Explorer - all 5 metrics should be arriving within 15 minutes</li>
+  </ol>
+  <div class="next-step"><strong>Owner:</strong> Whoever maintains the custom Databricks metrics collector code.</div>
+</div>
+
+<div class="cluster">
+  <h3><span class="cluster-num">4</span>MoveIT VM Datadog Agents not reporting (6 monitors)</h3>
+  <div class="meta">Monitors host-scoped to vm-moveit-auto and vm-moveit-xfr using <code>system.*</code> and <code>datadog.agent.up</code> metrics. Last modified 2026-01-17. Includes: MoveIT CPU Alert, MoveIT Memory Alert, MoveIT VM Stopped (one of each per host).</div>
+  <h3>Root cause</h3>
+  <p>Datadog Agent service stopped on both VMs, so the agent.up metric and all host system metrics stopped reporting.</p>
+  <h3>Steps to fix (in progress - Maryfin)</h3>
+  <ol>
+    <li>RDP into vm-moveit-auto</li>
+    <li>Open services.msc</li>
+    <li>Find every service with name starting with "Datadog" - typically "Datadog Agent" plus 1-2 sub-services</li>
+    <li>Right-click each Datadog service -&gt; Restart</li>
+    <li>Verify status shows "Running" for all of them</li>
+    <li>Repeat steps 1-5 for vm-moveit-xfr</li>
+    <li>Within 5 minutes, all 6 MoveIT monitors should resume reporting data</li>
+  </ol>
+  <div class="next-step"><strong>Owner:</strong> Maryfin (in progress).</div>
+</div>
+
+<h2>Validation - 7 days from now</h2>
+<p>The mute auto-expires 2026-05-13. After that:</p>
+<ul>
+  <li><strong>Healthy state:</strong> All 51 monitors back to OK or expected operational state. Dashboard clean naturally without mute.</li>
+  <li><strong>Partial fix state:</strong> Some monitors back to OK (those whose root cause got fixed), some back to No-Data (those whose owner did not act). Easy to see who did what.</li>
+  <li><strong>No fix state:</strong> All 36 back to No-Data. Re-mute, escalate to integration owners.</li>
+</ul>
+<p>Recommend a calendar reminder for 2026-05-13 morning to check the dashboard and confirm what came back.</p>
+
+<h2>Permanent prevention</h2>
+<ol>
+  <li><strong>Long-life Service Principal secrets:</strong> use a dedicated Datadog Service Principal with a 2-year client secret, calendar-tracked for renewal 60 days before expiry. Avoid 90-day rotating secrets that lapse silently.</li>
+  <li><strong>Auto-monitor on the integrations themselves:</strong> add a Datadog "Cloud Integration Status" monitor or "Integration Heartbeat" check that alerts when an integration's last_seen exceeds 30 minutes. That way the next time this happens, Datadog tells us before the dashboard goes blank.</li>
+  <li><strong>Custom collector defensive coding:</strong> the silent metric writes in cluster 3 happened because exceptions were swallowed. Add an exception logger and a "metrics_emitted_count" counter so a missing metric write surfaces immediately.</li>
+</ol>
+
+<div class="footer">Datadog No-Data Investigation Action Plan &middot; Author: Syed Rizvi &middot; 2026-05-06</div>
+
+</body></html>
