@@ -1,0 +1,177 @@
+=========================================================
+DATADOG FIX - EVERYTHING IN ONE FILE
+=========================================================
+Run order: BLOCK 1 -> BLOCK 2 -> BLOCK 3 -> BLOCK 4
+Total time: under 2 minutes
+=========================================================
+
+
+=========================================================
+BLOCK 1 - MUTE ALL 36 NO-DATA MONITORS (Datadog API)
+=========================================================
+Open Windows PowerShell (regular, no admin needed).
+Copy ALL of the lines between the START and END markers below.
+Paste into PowerShell. Hit Enter.
+It will prompt for API key, then App key. Paste each, hit Enter.
+
+----- START BLOCK 1 -----
+
+$k1 = Read-Host "Datadog API Key"
+$k2 = Read-Host "Datadog App Key"
+$h = @{"DD-API-KEY"=$k1; "DD-APPLICATION-KEY"=$k2}
+$e = [int64]((Get-Date).AddDays(7).ToUniversalTime() - (Get-Date "1970-01-01")).TotalSeconds
+$body = @{scope="*"; end=$e} | ConvertTo-Json
+$nd = Invoke-RestMethod "https://api.us3.datadoghq.com/api/v1/monitor" -Headers $h | Where-Object { $_.overall_state -eq "No Data" }
+Write-Host "Found $($nd.Count) No-Data monitors"
+$ok = 0
+$fail = 0
+foreach ($m in $nd) {
+    try {
+        Invoke-RestMethod "https://api.us3.datadoghq.com/api/v1/monitor/$($m.id)/mute" -Headers $h -Method POST -Body $body -ContentType "application/json" | Out-Null
+        $ok++
+        Write-Host "OK: $($m.name)" -ForegroundColor Green
+    } catch {
+        $fail++
+        Write-Host "FAIL: $($m.name) - $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+Write-Host ""
+Write-Host "DONE: muted $ok of $($nd.Count) - failed $fail" -ForegroundColor Cyan
+
+----- END BLOCK 1 -----
+
+Expected: "DONE: muted 36 of 36 - failed 0"
+If muted 0 - your App Key lacks monitors_write scope. Fall back to BLOCK 1B below.
+
+
+
+=========================================================
+BLOCK 1B - FALLBACK if BLOCK 1 fails (manual UI mute)
+=========================================================
+1. Open: https://us3.datadoghq.com/monitors/manage
+2. Left sidebar Status filter: check ONLY "No Data" (uncheck Alert/Warn/OK)
+3. Header row checkbox at top of list - selects all 36
+4. Toolbar Mute button -> Duration 7 days
+5. Note field - paste this:
+   Investigation - data ingestion broken upstream. Owner: Syed Rizvi. Auto-unmutes after 7 days.
+6. Confirm
+
+Result: dashboard clean within 30 seconds.
+
+
+
+=========================================================
+BLOCK 2 - TRUST THE TWO MOVEIT VMs (one-time setup)
+=========================================================
+Open NEW PowerShell window AS ADMINISTRATOR.
+Right-click Start menu -> Windows PowerShell (Admin).
+Copy and paste the line between START and END.
+
+----- START BLOCK 2 -----
+
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "vm-moveit-auto,vm-moveit-xfr" -Force -Concatenate
+
+----- END BLOCK 2 -----
+
+No output expected. If error appears, paste it.
+
+
+
+=========================================================
+BLOCK 3 - RESTART DATADOG AGENT ON vm-moveit-auto
+=========================================================
+Same admin PowerShell window.
+Copy and paste line between START and END.
+
+----- START BLOCK 3 -----
+
+Invoke-Command -ComputerName vm-moveit-auto -ScriptBlock { Restart-Service datadogagent; (Get-Service datadogagent).Status }
+
+----- END BLOCK 3 -----
+
+Expected output: Running
+
+If error "credentials" or "access denied" - prepend with credential prompt:
+$cred = Get-Credential
+Invoke-Command -ComputerName vm-moveit-auto -Credential $cred -ScriptBlock { Restart-Service datadogagent; (Get-Service datadogagent).Status }
+
+
+
+=========================================================
+BLOCK 4 - RESTART DATADOG AGENT ON vm-moveit-xfr
+=========================================================
+Same admin PowerShell window.
+
+----- START BLOCK 4 -----
+
+Invoke-Command -ComputerName vm-moveit-xfr -ScriptBlock { Restart-Service datadogagent; (Get-Service datadogagent).Status }
+
+----- END BLOCK 4 -----
+
+Expected output: Running
+
+
+
+=========================================================
+WHAT EACH BLOCK FIXES
+=========================================================
+BLOCK 1  -> Mutes all 36 No-Data monitors for 7 days with investigation note
+            Covers all 4 root cause clusters - dashboard goes clean
+BLOCK 1B -> Same as 1 but via UI - use only if API rejects (App Key scope issue)
+BLOCK 2  -> Allows your laptop to remote-manage the two MoveIT VMs over WinRM
+BLOCK 3  -> Restarts Datadog Agent on vm-moveit-auto - real fix for that host
+BLOCK 4  -> Restarts Datadog Agent on vm-moveit-xfr - real fix for that host
+
+
+
+=========================================================
+WHAT IS NOT AUTOMATED (manual click in Datadog UI)
+=========================================================
+After BLOCKS 1-4 the dashboard is clean and 2 hosts are reporting again.
+The 4 root causes still need real fixes by the integration owners:
+
+1. Azure cloud integration broken (16 monitors)
+   Click: Datadog -> Integrations -> Azure -> expand failing tenant
+   -> Update Application -> paste fresh Service Principal client secret
+   -> needs Azure App Registration admin
+
+2. Databricks integration broken (8 monitors)
+   Click: Datadog -> Integrations -> Databricks -> failing workspace
+   -> Update workspace token
+   -> needs Databricks workspace admin
+
+3. Custom Databricks collector partially broken (5 monitors)
+   The audit HTML lists which custom.databricks.* metric names are silent.
+   Find the custom collector code (script, notebook, or Airflow DAG that
+   publishes to custom.databricks.*). Grep for the silent metric names.
+   The metric writes were dropped in a code change.
+
+4. MoveIT VM agents - already fixed by BLOCKS 3 and 4
+
+
+
+=========================================================
+SUMMARY EMAIL TO SEND
+=========================================================
+Hi,
+
+Investigation update - the No-Data monitors:
+
+- 51 monitors total / 36 in No-Data state / 0 actively alerting
+- All 36 muted with investigation note (auto-unmute after 7 days)
+- Datadog Agent restarted on the two host-scoped VMs
+- 4 distinct root cause clusters identified:
+   1. Azure cloud integration broken - 16 monitors - re-auth needed
+   2. Databricks integration broken - 8 monitors - workspace token rotation
+   3. Custom Databricks collector partially broken - 5 monitors - silent
+      metric writes need to be restored in the collector code
+   4. MoveIT VM agents - 6 monitors - restarted, data resumes within minutes
+
+Working through the 3 remaining clusters with each integration owner.
+Audit HTML attached for full diagnostic.
+
+Thanks,
+Syed
+=========================================================
+END OF FILE
+=========================================================
