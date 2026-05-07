@@ -182,12 +182,24 @@ Log "PowerShell:        $($PSVersionTable.PSVersion)"
 
 Banner "Phase 0a -- Module install / import"
 $requiredModules = @("Az.Accounts","Az.Cdn","Az.FrontDoor","Az.Resources","Az.KeyVault")
+$pinnedVersions = @{ "Az.Cdn" = "6.0.1" }
 foreach ($m in $requiredModules) {
-    if (-not (Get-Module -ListAvailable -Name $m -ErrorAction SilentlyContinue)) {
-        Log "Installing $m (CurrentUser scope)..."
-        Install-Module -Name $m -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+    $pinVer = $pinnedVersions[$m]
+    if ($pinVer) {
+        $existing = Get-Module -ListAvailable -Name $m -ErrorAction SilentlyContinue | Where-Object { $_.Version -eq $pinVer }
+        if (-not $existing) {
+            Log "Installing $m v$pinVer (pinned)..."
+            Install-Module -Name $m -RequiredVersion $pinVer -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+        }
+        Remove-Module $m -Force -ErrorAction SilentlyContinue
+        Import-Module $m -RequiredVersion $pinVer -Force -ErrorAction Stop
+    } else {
+        if (-not (Get-Module -ListAvailable -Name $m -ErrorAction SilentlyContinue)) {
+            Log "Installing $m (CurrentUser scope)..."
+            Install-Module -Name $m -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+        }
+        Import-Module $m -ErrorAction Stop
     }
-    Import-Module $m -ErrorAction Stop
     $ver = (Get-Module -Name $m).Version
     Log "$m loaded (v$ver)" "OK"
 }
