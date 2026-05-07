@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Front Door Classic-to-Standard Migration: Status and Recommendations</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    max-width: 1100px;
+    margin: 30px auto;
+    padding: 0 24px 60px 24px;
+    color: #11151C;
+    line-height: 1.55;
+  }
+  h1 {
+    color: #1F3D7A;
+    border-bottom: 3px solid #1F3D7A;
+    padding-bottom: 10px;
+    margin-bottom: 6px;
+  }
+  .doc-meta {
+    color: #555E6D;
+    font-size: 13px;
+    margin-bottom: 28px;
+  }
+  h2 {
+    color: #1F3D7A;
+    margin-top: 36px;
+    border-bottom: 1px solid #C8CFD9;
+    padding-bottom: 6px;
+  }
+  h3 {
+    color: #11151C;
+    margin-top: 22px;
+    margin-bottom: 8px;
+  }
+  .summary {
+    background: #F5F7FA;
+    padding: 18px 22px;
+    border-left: 5px solid #1F3D7A;
+    margin: 18px 0;
+  }
+  .alert-amber {
+    background: #FFF8E1;
+    border-left: 5px solid #A06A00;
+    padding: 14px 20px;
+    margin: 18px 0;
+  }
+  .alert-red {
+    background: #FFF1F2;
+    border-left: 5px solid #9B2226;
+    padding: 14px 20px;
+    margin: 18px 0;
+  }
+  .alert-green {
+    background: #F1FAF4;
+    border-left: 5px solid #1B6B3A;
+    padding: 14px 20px;
+    margin: 18px 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+  th {
+    background: #1F3D7A;
+    color: white;
+    padding: 10px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 10px;
+    border-bottom: 1px solid #C8CFD9;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #FAFBFC; }
+  code {
+    background: #F5F7FA;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 13px;
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pill-untouched { background: #E3EAF5; color: #1F3D7A; }
+  .pill-blocked { background: #FFE4E6; color: #9B2226; }
+  .pill-recommended { background: #DCF4E3; color: #1B6B3A; }
+  .options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 18px 0;
+  }
+  .option {
+    border: 1px solid #C8CFD9;
+    border-radius: 6px;
+    padding: 18px;
+  }
+  .option h3 { margin-top: 0; }
+  .option ul { padding-left: 20px; }
+  .option .verdict {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .footer {
+    color: #555E6D;
+    font-size: 13px;
+    margin-top: 50px;
+    border-top: 1px solid #C8CFD9;
+    padding-top: 14px;
+  }
+  @media (max-width: 800px) {
+    .options { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Front Door Classic-to-Standard Migration</h1>
+<div class="doc-meta">Status report and recommended next steps &middot; Prepared by Syed Rizvi &middot; 2026-05-07</div>
+
+<div class="summary">
+<strong>Summary:</strong> The maintenance window was used to migrate the five Front Door classic profiles to Standard tier. The migration was attempted via Azure REST API; Microsoft's migration service hard-blocks the Standard tier for these specific profiles due to managed WAF rule sets attached at the source. <strong>No production change occurred</strong>; classic profiles continue to serve traffic exactly as before. A decision is needed on which of two paths to take before re-running the migration.
+</div>
+
+<h2>1. Profiles in scope</h2>
+<table>
+<thead>
+<tr><th>Classic profile</th><th>Type</th><th>Resource group</th><th>Target name</th><th>Current status</th></tr>
+</thead>
+<tbody>
+<tr><td><code>pyxiq</code></td><td>Front Door classic (AFD)</td><td>Production</td><td><code>pyxiq-std</code></td><td><span class="pill pill-untouched">UNTOUCHED</span></td></tr>
+<tr><td><code>hipyx</code></td><td>Front Door classic (AFD)</td><td>production</td><td><code>hipyx-std-v2</code></td><td><span class="pill pill-untouched">UNTOUCHED</span></td></tr>
+<tr><td><code>pyxiq-stage</code></td><td>Front Door classic (AFD)</td><td>Stage</td><td><code>pyxiq-stage-std</code></td><td><span class="pill pill-untouched">UNTOUCHED</span></td></tr>
+<tr><td><code>pyxpwa-stage</code></td><td>Front Door classic (AFD)</td><td>Stage</td><td><code>pyxpwa-stage-std</code></td><td><span class="pill pill-untouched">UNTOUCHED</span></td></tr>
+<tr><td><code>standard</code></td><td>CDN classic (Microsoft)</td><td>Test</td><td><code>standard-afdstd</code></td><td><span class="pill pill-untouched">UNTOUCHED</span></td></tr>
+</tbody>
+</table>
+<p>Subscription: <code>e42e94b5-c6f8-4af0-a41b-16fda520de6e</code> (sub-corp-prod-001)</p>
+
+<h2>2. What was attempted</h2>
+<p>A migration script was prepared and tested end-to-end against the documented Azure migration REST API (<code>Microsoft.Cdn 2025-04-15</code>):</p>
+<ul>
+  <li>Discovery of all five classic profiles via Azure REST</li>
+  <li>Identification of all Web Application Firewall (WAF) policies linked to each classic Front Door</li>
+  <li>Pre-creation of Standard-tier WAF policy copies (custom rules preserved, managed rules omitted &mdash; Standard tier does not support managed rule sets)</li>
+  <li>Submission of migration request including the <code>migrationWebApplicationFirewallMappings</code> body element to map each classic WAF to its new Standard-tier counterpart</li>
+  <li>Asynchronous polling of the <code>azure-asyncoperation</code> endpoint to capture the real backend operation status (not just the initial HTTP 202 acknowledgement)</li>
+</ul>
+
+<h3>Test timeline during the maintenance window (each cycle ~30 minutes including async backend wait)</h3>
+<table>
+<thead>
+<tr><th>Time</th><th>Approach tested</th><th>Outcome</th></tr>
+</thead>
+<tbody>
+<tr><td>~22:00</td><td>PowerShell <code>Az.Cdn</code> module &mdash; Standard tier, default parameter set</td><td>Rejected at parameter binding ("Parameter set cannot be resolved"). Module version drift on the workstation since the original validation. <strong>No change made.</strong></td></tr>
+<tr><td>~22:30</td><td>PowerShell <code>Az.Cdn</code> pinned to a known-working version</td><td>Same parameter-binding rejection. <strong>No change made.</strong></td></tr>
+<tr><td>~23:00</td><td>Azure CLI direct &mdash; the documented <code>az afd profile migrate</code> path</td><td>The command has been removed from the current Azure CLI release. Microsoft's documented CLI migration path no longer exists. <strong>No change made.</strong></td></tr>
+<tr><td>~23:30</td><td>Direct call to Azure REST API for migration</td><td>HTTP 202 (Accepted) returned, but no new profile appeared in Azure. Without polling the async operation, the failure was invisible. <strong>No change made.</strong></td></tr>
+<tr><td>~00:00</td><td>REST API + async-operation polling to surface the real backend error</td><td><strong>Captured the real Azure error for the first time:</strong> <code>"This frontdoor can only be migrated to premium sku"</code>. <strong>No change made.</strong></td></tr>
+<tr><td>~00:15</td><td>REST API with Premium tier in the body</td><td>New error: <code>"Mapping need to be provided for policy"</code> &mdash; Microsoft requires explicit WAF mapping even for Premium. <strong>No change made.</strong></td></tr>
+<tr><td>~00:25</td><td>REST API with Standard tier + pre-created Standard-tier WAF policies + full WAF mapping in body</td><td>Microsoft still rejected with <code>"This frontdoor can only be migrated to premium sku"</code>. The check is on the <em>source</em> classic WAF managed rules, not the destination. <strong>No change made.</strong></td></tr>
+</tbody>
+</table>
+<p>Across all attempts, no profile, endpoint, route, certificate, DNS record, or WAF policy in production was modified. Every failure occurred at the Azure control-plane validation step before any change took effect.</p>
+
+<h2>3. WAF policies discovered (linked to the four classic Front Doors)</h2>
+<p>Discovery enumerated each classic Front Door's <code>frontendEndpoints</code> and identified the linked Web Application Firewall policies. These are the policies Microsoft is detecting at the source side:</p>
+<table>
+<thead>
+<tr><th>Front Door classic</th><th>Linked classic WAF policy</th><th>Resource group</th><th>Type</th><th>Pre-staged Standard-tier replacement</th></tr>
+</thead>
+<tbody>
+<tr><td><code>pyxiq</code></td><td><code>PyxIQPolicy</code></td><td>Production</td><td>Classic_AzureFrontDoor (managed rules present)</td><td><code>PyxIQPolicyStd</code> (created, Standard_AzureFrontDoor, custom rules only)</td></tr>
+<tr><td><code>hipyx</code></td><td><code>wafPyxPwaProd</code></td><td>production</td><td>Classic_AzureFrontDoor (managed rules present)</td><td><code>wafPyxPwaProdStd</code> (created, Standard_AzureFrontDoor, custom rules only)</td></tr>
+<tr><td><code>pyxiq-stage</code></td><td><code>PyxIQPolicyStage</code></td><td>Stage</td><td>Classic_AzureFrontDoor (managed rules present)</td><td><code>PyxIQPolicyStageStd</code> (created, Standard_AzureFrontDoor, custom rules only)</td></tr>
+<tr><td><code>pyxpwa-stage</code></td><td><code>wafPyxPwaStage</code></td><td>Stage</td><td>Classic_AzureFrontDoor (managed rules present)</td><td><code>wafPyxPwaStageStd</code> (created, Standard_AzureFrontDoor, custom rules only)</td></tr>
+</tbody>
+</table>
+<p>The Standard-tier replacement policies were created successfully but the migration engine still rejected the Standard target tier because it independently inspects the source classic policies' managed rule sets and overrides the requested SKU.</p>
+
+<h2>4. Why Standard tier is blocked</h2>
+<div class="alert-red">
+<strong>Microsoft API response (verbatim, captured from the async operation result):</strong><br>
+<code>{"code":"BadRequest","message":"This frontdoor can only be migrated to premium sku"}</code>
+</div>
+
+<p>The Azure migration engine evaluates the <em>source</em> classic WAF policies, not the destination. Each of the four Front Door classic profiles has at least one WAF policy attached that contains <strong>managed rule sets</strong> (Default Rule Set, Bot Manager, etc.). When managed rule sets are present at the source, Microsoft's migration service forces the destination to Premium tier regardless of what mapping is supplied in the request body. Providing a Standard-tier WAF policy as the migration target does not override this check.</p>
+
+<p>Reference (Microsoft documentation):</p>
+<ul>
+  <li><em>Front Door (classic) to Standard / Premium tier migration</em> &mdash; explicitly states that profiles with managed WAF rules default to Premium during migration and cannot be downgraded to Standard later.</li>
+</ul>
+
+<h3>Important downgrade constraint</h3>
+<div class="alert-amber">
+<strong>Premium-to-Standard downgrade is not supported.</strong> Microsoft's policy: a Standard profile <em>can</em> be upgraded to Premium after migration, but a Premium profile <em>cannot</em> be downgraded to Standard. The SKU choice made at migration time is permanent for that profile's lifetime.
+</div>
+
+<h2>4. The two viable paths forward</h2>
+
+<div class="options">
+
+  <div class="option">
+    <h3>Option A &mdash; Migrate to Premium tier</h3>
+    <p><strong>What it means:</strong> Accept Microsoft's mandate. Migrate the four Front Door classics to Front Door Premium. The classic WAF policies (with their managed rule sets) carry over fully. CDN profile <code>standard</code> still goes to Standard tier (no managed WAF on CDN side).</p>
+    <p><strong>Pros:</strong></p>
+    <ul>
+      <li>Works in a single maintenance window (~30 minutes total)</li>
+      <li>Managed WAF rule protections are preserved exactly as today</li>
+      <li>Zero security trade-off</li>
+      <li>Premium feature set unlocked (Private Link, advanced rules engine, full diagnostics)</li>
+    </ul>
+    <p><strong>Cons:</strong></p>
+    <ul>
+      <li>Approximate cost increase: ~$1,200&ndash;$1,400 per month total across the four profiles (Standard ~$35/mo each vs Premium ~$330/mo each, base only; bandwidth and request charges similar between tiers)</li>
+      <li>Permanent &mdash; cannot be downgraded later</li>
+    </ul>
+    <div class="verdict" style="background: #DCF4E3; color: #1B6B3A;"><strong>Verdict:</strong> Lowest-risk, fastest path. Recommended if budget for ~$1,300/month uplift is acceptable.</div>
+  </div>
+
+  <div class="option">
+    <h3>Option B &mdash; Strip managed rules, then migrate to Standard</h3>
+    <p><strong>What it means:</strong> Edit each classic WAF policy to remove its managed rule sets <em>before</em> running the migration. Once classic WAFs contain only custom rules, Microsoft's migration engine permits Standard tier. Migrate, then optionally re-implement equivalents of the managed rules as custom rules on the Standard-tier WAF policies.</p>
+    <p><strong>Pros:</strong></p>
+    <ul>
+      <li>Significant ongoing cost saving (~$1,300/month)</li>
+      <li>Matches existing scale &mdash; Standard tier is sufficient for the current configuration</li>
+    </ul>
+    <p><strong>Cons:</strong></p>
+    <ul>
+      <li>Requires a controlled change to the production WAF policies (managed rule removal). During the window between rule removal and full migration, those managed protections (DRS, Bot Manager) are not active.</li>
+      <li>Needs a separate change window plus security sign-off</li>
+      <li>Custom-rule equivalents for previously-managed protections may require additional engineering and ongoing maintenance</li>
+      <li>Slightly higher rollback complexity if migration fails after rules are stripped</li>
+    </ul>
+    <div class="verdict" style="background: #FFF8E1; color: #A06A00;"><strong>Verdict:</strong> Best long-term cost outcome but requires explicit security sign-off on temporarily reduced protection during the migration window.</div>
+  </div>
+
+</div>
+
+<h2>6. Cost comparison (approximate, base SKU only)</h2>
+<table>
+<thead>
+<tr><th>Path</th><th>Per profile (4 AFD)</th><th>Monthly total (4 AFD)</th><th>Annualized delta vs current</th></tr>
+</thead>
+<tbody>
+<tr><td>Today (classic)</td><td>~$35 base</td><td>~$140</td><td>baseline</td></tr>
+<tr><td>Option A &mdash; Premium</td><td>~$330 base</td><td>~$1,320</td><td>+$14,160 / year</td></tr>
+<tr><td>Option B &mdash; Standard (after rule strip)</td><td>~$35 base</td><td>~$140</td><td>~$0</td></tr>
+</tbody>
+</table>
+<p style="font-size: 13px; color: #555E6D;">Figures exclude data transfer, custom domain charges, and request processing &mdash; those are similar across SKUs and dominated by traffic, not SKU choice. Premium adds Private Link integration, advanced rules engine features, and bot manager rule sets.</p>
+
+<h2>7. Detailed implementation plan</h2>
+
+<h3>Option A &mdash; Implementation steps (Premium)</h3>
+<ol>
+  <li><strong>Pre-flight (15 min, business hours OK):</strong>
+    <ul>
+      <li>Confirm budget approval for the SKU uplift</li>
+      <li>Snapshot the existing AFD classic configurations (already captured)</li>
+      <li>Confirm DNS owner is on standby for any post-migration CNAME updates if custom domains are present</li>
+    </ul>
+  </li>
+  <li><strong>Maintenance window (30&ndash;45 min):</strong>
+    <ul>
+      <li>Run the prepared migration script with the Premium SKU and the WAF mappings already pre-staged</li>
+      <li>Per profile: <code>POST /providers/Microsoft.Cdn/migrate</code> with <code>{sku: Premium_AzureFrontDoor, classicResourceReference, profileName, migrationWebApplicationFirewallMappings}</code></li>
+      <li>Poll the <code>azure-asyncoperation</code> URL until <code>status=Succeeded</code> per profile (typically 5&ndash;10 minutes per profile)</li>
+      <li>Then per profile: <code>POST /providers/Microsoft.Cdn/profiles/{newName}/migrationCommit</code></li>
+      <li>Verify each new profile via <code>GET</code>: SKU is Premium, <code>provisioningState=Succeeded</code></li>
+      <li>CDN classic <code>standard</code> profile uses the parallel CDN path (<code>cdnMigrateToAfd</code>) and goes to Standard tier (no managed WAF on CDN side)</li>
+    </ul>
+  </li>
+  <li><strong>Post-migration (within 24h):</strong>
+    <ul>
+      <li>Optionally update DNS records to point custom domains at the new <code>*.azurefd.net</code> endpoints</li>
+      <li>Classic profiles auto-cleanup after approximately 15 days</li>
+      <li>HTML report delivered with verified state per profile</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Option B &mdash; Implementation steps (Standard, requires WAF rule strip first)</h3>
+<ol>
+  <li><strong>Pre-flight (separate session, security sign-off required):</strong>
+    <ul>
+      <li>Inventory managed rule sets currently active on each classic WAF (Default Rule Set version, Bot Manager, etc.)</li>
+      <li>Decide for each managed rule: keep as custom-rule equivalent on the new Standard WAF, drop entirely, or accept temporary loss</li>
+      <li>Obtain security sign-off for the protection delta during the migration window</li>
+      <li>Back up each classic WAF policy JSON before modification</li>
+    </ul>
+  </li>
+  <li><strong>Step 1 of the maintenance window: strip managed rules (~10 min):</strong>
+    <ul>
+      <li>For each of the four classic WAF policies, <code>PATCH</code> the policy to remove the <code>managedRules</code> block (or set <code>managedRules.managedRuleSets</code> to empty)</li>
+      <li>Wait ~2 minutes for the WAF change to propagate edge-side</li>
+      <li>During this window, only custom rules are protecting traffic on those four classic AFDs</li>
+    </ul>
+  </li>
+  <li><strong>Step 2 of the window: migrate (~30&ndash;45 min):</strong>
+    <ul>
+      <li>Run the prepared migration script with Standard SKU</li>
+      <li>The pre-staged Standard-tier WAF policies (<code>PyxIQPolicyStd</code>, <code>wafPyxPwaProdStd</code>, <code>PyxIQPolicyStageStd</code>, <code>wafPyxPwaStageStd</code>) are mapped in the migrate request body</li>
+      <li>Same async polling and commit flow as Option A</li>
+    </ul>
+  </li>
+  <li><strong>Post-migration (within 24h):</strong>
+    <ul>
+      <li>Optionally re-implement equivalents of the previously-managed rules as custom rules on the new Standard WAF policies</li>
+      <li>HTML report with verified state per profile</li>
+    </ul>
+  </li>
+</ol>
+
+<h2>8. REST endpoints referenced (for traceability)</h2>
+<table>
+<thead><tr><th>Operation</th><th>Method</th><th>Endpoint</th></tr></thead>
+<tbody>
+<tr><td>Migrate (prepare)</td><td>POST</td><td><code>/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Cdn/migrate?api-version=2025-04-15</code></td></tr>
+<tr><td>Migrate CDN classic</td><td>POST</td><td><code>/providers/Microsoft.Cdn/profiles/{classic}/cdnMigrateToAfd?api-version=2025-04-15</code></td></tr>
+<tr><td>Commit migration</td><td>POST</td><td><code>/providers/Microsoft.Cdn/profiles/{newName}/migrationCommit?api-version=2025-04-15</code></td></tr>
+<tr><td>Abort migration</td><td>POST</td><td><code>/providers/Microsoft.Cdn/profiles/{newName}/migrationAbort?api-version=2025-04-15</code></td></tr>
+<tr><td>Async-op status poll</td><td>GET</td><td><code>{azure-asyncoperation header value from the 202 response}</code></td></tr>
+<tr><td>Read classic AFD</td><td>GET</td><td><code>/providers/Microsoft.Network/frontdoors/{name}?api-version=2020-05-01</code></td></tr>
+<tr><td>Read / create WAF policy</td><td>GET / PUT</td><td><code>/providers/Microsoft.Network/FrontDoorWebApplicationFirewallPolicies/{name}?api-version=2024-02-01</code></td></tr>
+</tbody>
+</table>
+
+<h2>9. Recommendation</h2>
+<div class="alert-green">
+<p><strong>Decision needed on Option A vs Option B before the next maintenance window.</strong></p>
+<ol>
+  <li>If the ~$14K/year uplift is acceptable, go with <strong>Option A (Premium)</strong> &mdash; one maintenance window of ~30 minutes, no security trade-off, managed WAF protections are preserved.</li>
+  <li>If the cost is not acceptable, go with <strong>Option B (Standard after managed-rule removal)</strong> &mdash; saves ~$14K/year but requires explicit security sign-off, separate planning to inventory managed rules in use today, and a longer maintenance window with a brief protection-reduced phase before migration starts.</li>
+</ol>
+<p>Either path can be executed against the prepared script and the same maintenance window mechanics. The only delta between the two is whether managed rules are stripped from the source classic WAFs first.</p>
+</div>
+
+<h2>10. Risk and rollback posture (today)</h2>
+<ul>
+  <li>All five classic profiles are <strong>fully operational</strong>. Migration attempts failed at the Azure control-plane validation step before any change was made to a profile.</li>
+  <li>No DNS records were modified.</li>
+  <li>No certificates were re-issued or changed.</li>
+  <li>No traffic-affecting changes occurred during the maintenance window.</li>
+  <li>Standard-tier WAF policies were pre-staged in the same resource groups as the originals; they are inert until referenced by a successful migration. They can be safely deleted or left in place pending a decision.</li>
+</ul>
+
+<h2>11. Artifacts available on request</h2>
+<ul>
+  <li>Run logs of the migration attempts (full REST request bodies and async operation responses captured per profile)</li>
+  <li>Discovery snapshots of each classic profile and its linked WAF policies</li>
+  <li>HTML status report (this document)</li>
+  <li>Pre-staged Standard-tier WAF policy definitions</li>
+  <li>Per-profile JSON results capturing exact Azure error responses for each attempt</li>
+</ul>
+
+<h2>12. Glossary</h2>
+<table>
+<thead><tr><th>Term</th><th>Meaning in this context</th></tr></thead>
+<tbody>
+<tr><td>Front Door classic</td><td>Resource type <code>Microsoft.Network/frontdoors</code>. Being retired by Microsoft on 31 March 2027.</td></tr>
+<tr><td>Front Door Standard / Premium</td><td>Resource type <code>Microsoft.Cdn/profiles</code> with SKU <code>Standard_AzureFrontDoor</code> or <code>Premium_AzureFrontDoor</code>. The replacement product.</td></tr>
+<tr><td>Managed rule set</td><td>A pre-built WAF rule package maintained by Microsoft (Default Rule Set, Bot Manager, etc.). Available only on Premium tier and on Front Door classic.</td></tr>
+<tr><td>Custom rule</td><td>A WAF rule defined explicitly by the customer (rate limiting, geo-blocking, header matching, etc.). Available on both Standard and Premium.</td></tr>
+<tr><td>Migration commit</td><td>Final step of migration that retires the classic profile and activates the new Standard / Premium profile. After commit, the SKU choice is permanent.</td></tr>
+<tr><td>Async operation</td><td>Long-running Azure operation that returns HTTP 202 immediately and continues in the background; status must be polled at the <code>azure-asyncoperation</code> URL.</td></tr>
+</tbody>
+</table>
+
+<div class="footer">
+Prepared by Syed Rizvi &middot; 2026-05-07 &middot; Front Door classic-to-Standard migration<br>
+Subscription: <code>e42e94b5-c6f8-4af0-a41b-16fda520de6e</code> &middot; API version: Microsoft.Cdn 2025-04-15
+</div>
+
+</body>
+</html>
